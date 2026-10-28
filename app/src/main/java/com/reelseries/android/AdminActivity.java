@@ -56,11 +56,16 @@ public class AdminActivity extends Activity {
     }
     private void verifyAdmin() {
         if (auth.getCurrentUser() == null) { showLogin(); return; }
+        reset("Administração • Reel Séries");
         message.setText("Verificando autorização...");
         db.collection("admins").document(auth.getCurrentUser().getUid()).get()
             .addOnSuccessListener(doc -> {
-                if (doc.exists() && Boolean.TRUE.equals(doc.getBoolean("enabled"))) showEditor();
-                else { message.setText("Conta sem permissão de administrador."); button("Sair", v -> {auth.signOut(); showLogin();}); }
+                if (doc.exists() && Boolean.TRUE.equals(doc.getBoolean("active")) && "admin".equals(doc.getString("role"))) {
+                    showEditor();
+                } else {
+                    message.setText("Conta sem permissão. Confira active=true e role=admin em admins/UID.");
+                    button("Trocar conta", v -> { auth.signOut(); showLogin(); });
+                }
             })
             .addOnFailureListener(error -> message.setText("Não foi possível verificar permissão: " + error.getMessage()));
     }
