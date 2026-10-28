@@ -1,0 +1,1 @@
+Reel Séries Android V2 — projeto Java Android com WebViewAssetLoader e catálogo HTML local. Envie o CONTEÚDO desta pasta para a raiz do GitHub. Em Actions, execute Gerar APK Android. A compilação e a reprodução em dispositivos ainda precisam ser testadas. O arquivo Firebase_Completo.json pode conter dados que não devem ser publicados; revise antes de tornar o repositório público.
