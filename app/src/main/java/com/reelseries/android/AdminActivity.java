@@ -26,7 +26,7 @@ public class AdminActivity extends Activity {
  private void button(String label,Runnable action){Button b=new Button(this);b.setText(label);b.setAllCaps(false);root.addView(b);b.setOnClickListener(v->action.run());}
  private void msg(String s){runOnUiThread(()->{if(!isFinishing()&&status!=null)status.setText(s);});}
  private void login(){authorized=false;screen("Acesso protegido");if(auth.getCurrentUser()!=null){verify();return;}EditText email=field("E-mail"),pass=field("Senha");pass.setInputType(129);button("Entrar",()->{msg("Autenticando...");auth.signInWithEmailAndPassword(email.getText().toString().trim(),pass.getText().toString()).addOnSuccessListener(x->verify()).addOnFailureListener(e->msg(e.getMessage()));});}
- private void verify(){if(auth.getCurrentUser()==null){login();return;}msg("Verificando administrador...");firestore.collection("admins").document(auth.getCurrentUser().getUid()).get().addOnSuccessListener(d->{if(d.exists()&&Boolean.TRUE.equals(d.getBoolean("active"))&&"admin".equals(d.getString("role"))){authorized=true;dashboard();}else{msg("Conta sem autorização.");button("Trocar conta",()->{auth.signOut();login();});}}).addOnFailureListener(e->msg("Erro de autorização: "+e.getMessage()));}
+ private void verify(){if(auth.getCurrentUser()==null){login();return;}msg("Verificando administrador...");firestore.collection("admins").document(auth.getCurrentUser().getUid()).get().addOnSuccessListener(d->{if(d.exists()&&Boolean.TRUE.equals(d.getBoolean("active"))&&"admin".equals(d.getString("role"))){authorized=true;dashboard();seedBundledCatalog();}else{msg("Conta sem autorização.");button("Trocar conta",()->{auth.signOut();login();});}}).addOnFailureListener(e->msg("Erro de autorização: "+e.getMessage()));}
  private TextView panelText(String text,int size){TextView t=new TextView(this);t.setText(text);t.setTextColor(-1);t.setTextSize(size);t.setPadding(18,15,18,15);return t;}
  private void dashboard(){if(!authorized){login();return;}screen("PAINEL TOTAL V11");msg("Banco interno SQLite • Firebase somente para acesso administrativo");
  LinearLayout stats=new LinearLayout(this);stats.setOrientation(0);root.addView(stats);TextView total=panelText("REGISTROS LOCAIS\n"+catalog.count(),20);total.setBackgroundColor(0xff192233);stats.addView(total,new LinearLayout.LayoutParams(0,-2,1));TextView apk=panelText("FONTE\nAndroid",18);apk.setBackgroundColor(0xff192233);LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,-2,1);ap.leftMargin=10;stats.addView(apk,ap);
@@ -34,12 +34,46 @@ public class AdminActivity extends Activity {
  button("⇧ Importar arquivo JSON",()->pick(JSON));button("⇧ Importar arquivo M3U",()->pick(M3U));
  button("🔗 Adicionar link M3U (playlist)",()->urlDialog(false));button("▶ Adicionar link M3U8 (stream)",()->urlDialog(true));
  button("↻ Atualizar lista IPTV por URL",()->urlDialog(false));
+ button("⌕ Ver todos os títulos e gerenciar",()->browseTitles(0));
  button("⌕ Pesquisar e gerenciar títulos",this::manageTitles);
  button("◉ Estatísticas do catálogo",this::statistics);
  button("↻ Atualizar painel",this::dashboard);
  button("♟ Gerenciar acesso do administrador",()->msg("O acesso é validado em admins/{uid} no Firebase. Gerenciamento de outros usuários requer regras e telas próprias."));
  button("Sair da conta",()->{auth.signOut();login();});}
+ private void seedBundledCatalog(){
+  worker.execute(()->{
+   try{
+    android.content.SharedPreferences prefs=getSharedPreferences("reel_admin_catalog",MODE_PRIVATE);
+    if(prefs.getBoolean("asset_6760_loaded",false))return;
+    runOnUiThread(()->msg("Sincronizando catálogo original do APK com o administrador..."));
+    try(InputStream in=getAssets().open("catalogo.json")){
+     int n=catalog.importJson(in,c->msg("Preparando catálogo interno: "+c+" títulos..."));
+     prefs.edit().putBoolean("asset_6760_loaded",true).apply();
+     runOnUiThread(()->{if(!isFinishing()){dashboard();msg("Catálogo original disponível no administrador: "+n+" registros. Para os demais títulos, importe seu JSON completo.");}});
+    }
+   }catch(Exception e){msg("Não foi possível carregar o catálogo original: "+e.getMessage());}
+  });
+ }
  private void statistics(){screen("Estatísticas do catálogo");msg("Análise dos dados armazenados neste aparelho.");worker.execute(()->{int total=catalog.count();java.util.ArrayList<String> cats=catalog.categories();runOnUiThread(()->{if(isFinishing())return;root.addView(panelText("Total de registros: "+total+"\nCategorias: "+cats.size(),19));for(String c:cats){if(root.getChildCount()>65)break;root.addView(panelText("• "+c,14));}button("Voltar ao painel",this::dashboard);});});}
+ private void browseTitles(int offset){
+  screen("Todos os filmes, séries e canais");msg("Carregando registros "+(offset+1)+" a "+(offset+50)+"...");
+  worker.execute(()->{
+   java.util.ArrayList<org.json.JSONObject> items=catalog.page(offset,50);
+   int total=catalog.count();
+   runOnUiThread(()->{
+    if(isFinishing())return;
+    msg("Total: "+total+" • Página "+(offset/50+1));
+    for(org.json.JSONObject item:items){
+     String label=item.optString("nome")+" • "+item.optString("categoria");
+     button(label,()->editLocal(item));
+    }
+    if(offset>0)button("← Página anterior",()->browseTitles(Math.max(0,offset-50)));
+    if(offset+50<total)button("Próxima página →",()->browseTitles(offset+50));
+    button("Pesquisar títulos",this::manageTitles);
+    button("Voltar ao painel",this::dashboard);
+   });
+  });
+ }
  private void manageTitles(){screen("Pesquisar títulos locais");EditText q=field("Pesquisar filme, série, episódio ou canal");button("Pesquisar",()->{String term=q.getText().toString().trim();worker.execute(()->{java.util.ArrayList<org.json.JSONObject> items=catalog.search(term,"Todas",60);runOnUiThread(()->{if(isFinishing())return;screen("Resultados da pesquisa");msg(items.size()+" resultados (máximo 60)");for(org.json.JSONObject item:items){String name=item.optString("nome"),cat=item.optString("categoria");button(name+" • "+cat,()->editLocal(item));}button("Nova pesquisa",this::manageTitles);button("Voltar",this::dashboard);});});});button("Voltar",this::dashboard);}
  private void editLocal(org.json.JSONObject item){screen("Editar conteúdo local");EditText name=field("Nome"),cat=field("Categoria"),cover=field("URL da capa"),url=field("URL do vídeo"),syn=field("Sinopse");name.setText(item.optString("nome"));cat.setText(item.optString("categoria"));cover.setText(item.optString("capa"));url.setText(item.optString("url"));syn.setText(item.optString("sinopse"));button("Salvar alterações",()->{String n=name.getText().toString().trim();if(n.isEmpty()){msg("Informe o nome");return;}catalog.save(catalog.getWritableDatabase(),item.optString("id"),n,cat.getText().toString(),cover.getText().toString(),url.getText().toString(),syn.getText().toString(),"","edição local");msg("Alterações salvas no celular.");});button("Excluir título",()->new AlertDialog.Builder(this).setTitle("Excluir este título?").setMessage(item.optString("nome")).setNegativeButton("Cancelar",null).setPositiveButton("Excluir",(d,w)->{catalog.getWritableDatabase().delete("media","id=?",new String[]{item.optString("id")});manageTitles();}).show());button("Voltar à pesquisa",this::manageTitles);}
  private void pick(int type){if(busy){msg("Aguarde a importação terminar.");return;}Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("*/*");startActivityForResult(i,type);}

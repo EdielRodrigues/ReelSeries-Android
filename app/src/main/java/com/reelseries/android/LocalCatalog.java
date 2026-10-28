@@ -28,6 +28,16 @@ public class LocalCatalog extends SQLiteOpenHelper {
  public void save(SQLiteDatabase db,String id,String name,String category,String cover,String url,String synopsis,String group,String origin){android.content.ContentValues v=new android.content.ContentValues();v.put("id",id);v.put("nome",name);v.put("categoria",category);v.put("capa",cover);v.put("url",url);v.put("sinopse",synopsis);v.put("grupo",group);v.put("origem",origin);db.insertWithOnConflict("media",null,v,SQLiteDatabase.CONFLICT_REPLACE);}
  public void addStream(String name,String url){save(getWritableDatabase(),"stream_"+hash(url),name,"IPTV ao vivo","",url,"","","M3U8");}
  public ArrayList<JSONObject> search(String q,String cat,int limit){ArrayList<JSONObject> list=new ArrayList<>();String sql="SELECT id,nome,categoria,capa,url,sinopse FROM media WHERE nome LIKE ?"+(cat.equals("Todas")?"":" AND categoria=?")+" ORDER BY nome LIMIT "+Math.max(1,Math.min(300,limit));String[] args=cat.equals("Todas")?new String[]{"%"+q+"%"}:new String[]{"%"+q+"%",cat};try(Cursor c=getReadableDatabase().rawQuery(sql,args)){while(c.moveToNext()){JSONObject o=new JSONObject();try{for(int i=0;i<6;i++)o.put(c.getColumnName(i),c.getString(i));list.add(o);}catch(Exception ignored){}}}return list;}
+ public ArrayList<JSONObject> page(int offset,int limit){
+  ArrayList<JSONObject> result=new ArrayList<>();
+  try(Cursor c=getReadableDatabase().rawQuery("SELECT id,nome,categoria,capa,url,sinopse FROM media ORDER BY nome LIMIT ? OFFSET ?",new String[]{String.valueOf(limit),String.valueOf(offset)})){
+   while(c.moveToNext()){
+    JSONObject o=new JSONObject();
+    try{for(int i=0;i<6;i++)o.put(c.getColumnName(i),c.getString(i));result.add(o);}catch(Exception ignored){}
+   }
+  }
+  return result;
+ }
  public ArrayList<String> categories(){ArrayList<String> a=new ArrayList<>();try(Cursor c=getReadableDatabase().rawQuery("SELECT DISTINCT categoria FROM media WHERE categoria IS NOT NULL AND categoria != '' ORDER BY categoria",null)){while(c.moveToNext())a.add(c.getString(0));}return a;}
  public int count(){try(Cursor c=getReadableDatabase().rawQuery("SELECT count(*) FROM media",null)){return c.moveToFirst()?c.getInt(0):0;}}
  public interface Progress{void update(int count);}
