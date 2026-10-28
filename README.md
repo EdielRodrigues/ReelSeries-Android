@@ -1,9 +1,15 @@
-# Reel Séries Android Nativo V3
+# Reel Séries Android Nativo V4
 
-Interface Android Java sem WebView ou HTML. Catálogo extraído de backup, com 6760 registros de mídia; dados pessoais e administrativos excluídos.
+Android Java nativo sem HTML e sem WebView. Catálogo local original, busca, tela de detalhes e player Media3 ExoPlayer com controles nativos, buffering, MP4 e HLS quando compatíveis.
 
-## GitHub
-Envie os arquivos desta pasta para a raiz do repositório e execute Actions > Gerar APK Android Nativo.
+## Compilar
 
-## Limitações
-Esta versão inicial implementa catálogo, busca, categorias, detalhes e reprodução por VideoView de URLs compatíveis. Não inclui ainda autenticação Firebase, sincronização de favoritos, DRM, suporte universal a streams nem painel administrativo. Capas e vídeos exigem rede e links válidos. Não compilado neste ambiente; validar no GitHub Actions.
+GitHub Actions > Gerar APK Android Nativo > Run workflow. O APK é disponibilizado em Artifacts após compilação bem-sucedida.
+
+## Google Cast
+
+Ainda não implementado. A transmissão para TV exige integrar o Google Cast SDK, registrar um receiver e testar com dispositivo compatível. Não há botão falso de Cast nesta versão.
+
+## Atenção
+
+Dados do catálogo podem conter links externos indisponíveis ou sem autorização. Não foram verificados. As informações exibidas dependem dos campos existentes na base original. A compilação não foi testada neste ambiente.
