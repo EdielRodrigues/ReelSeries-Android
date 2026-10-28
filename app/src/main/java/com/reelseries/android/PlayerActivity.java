@@ -1,5 +1,5 @@
 package com.reelseries.android;
-import android.app.*;import android.os.*;import android.content.pm.ActivityInfo;import android.view.*;import android.widget.*;import androidx.media3.common.*;import androidx.media3.exoplayer.ExoPlayer;import androidx.media3.ui.PlayerView;
+import android.app.*;import android.os.*;import android.content.pm.ActivityInfo;import android.view.*;import android.widget.*;import androidx.media3.common.*;import androidx.media3.exoplayer.ExoPlayer;import androidx.media3.ui.PlayerView;import androidx.media3.ui.AspectRatioFrameLayout;
 public class PlayerActivity extends Activity {
  private ExoPlayer player;private PlayerView playerView;private long savedPosition=0;private String url;private boolean playWhenReady=true;
  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(0xff000000);getWindow().setNavigationBarColor(0xff000000);getWindow().getDecorView().setSystemUiVisibility(4|1024|4096);setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
