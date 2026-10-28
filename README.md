@@ -1,1 +1,9 @@
-Reel Séries Android V2 — projeto Java Android com WebViewAssetLoader e catálogo HTML local. Envie o CONTEÚDO desta pasta para a raiz do GitHub. Em Actions, execute Gerar APK Android. A compilação e a reprodução em dispositivos ainda precisam ser testadas. O arquivo Firebase_Completo.json pode conter dados que não devem ser publicados; revise antes de tornar o repositório público.
+# Reel Séries Android Nativo V3
+
+Interface Android Java sem WebView ou HTML. Catálogo extraído de backup, com 6760 registros de mídia; dados pessoais e administrativos excluídos.
+
+## GitHub
+Envie os arquivos desta pasta para a raiz do repositório e execute Actions > Gerar APK Android Nativo.
+
+## Limitações
+Esta versão inicial implementa catálogo, busca, categorias, detalhes e reprodução por VideoView de URLs compatíveis. Não inclui ainda autenticação Firebase, sincronização de favoritos, DRM, suporte universal a streams nem painel administrativo. Capas e vídeos exigem rede e links válidos. Não compilado neste ambiente; validar no GitHub Actions.
