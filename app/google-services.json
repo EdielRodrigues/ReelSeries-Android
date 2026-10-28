@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "60839982013",
+    "firebase_url": "https://smart-tv-c175a-default-rtdb.firebaseio.com",
+    "project_id": "smart-tv-c175a",
+    "storage_bucket": "smart-tv-c175a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:60839982013:android:a9b0ada87e34887b63d8d4",
+        "android_client_info": {
+          "package_name": "com.reelseries.android"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBDC0-h_Q9Lp2e0wDrdeOqzwS-pcNkt_20"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
