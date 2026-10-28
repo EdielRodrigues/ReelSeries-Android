@@ -1,9 +1,33 @@
 package com.reelseries.android;
-import android.app.*;import android.os.*;import android.content.*;import android.graphics.Bitmap;import android.view.*;import android.webkit.*;import android.widget.*;import java.io.*;import androidx.webkit.WebViewAssetLoader;
+
+import android.app.Activity;
+import android.os.Bundle;
+import android.graphics.Color;
+import android.view.Gravity;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
 public class MainActivity extends Activity {
- WebView web; View fullscreen; WebChromeClient.CustomViewCallback fullscreenCallback; FrameLayout frame;
- @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(0xff08090d);getWindow().setNavigationBarColor(0xff08090d);frame=new FrameLayout(this);setContentView(frame);web=new WebView(this);frame.addView(web,new FrameLayout.LayoutParams(-1,-1));WebSettings s=web.getSettings();s.setJavaScriptEnabled(true);s.setDomStorageEnabled(true);s.setMediaPlaybackRequiresUserGesture(false);s.setAllowFileAccess(false);s.setAllowContentAccess(false);s.setCacheMode(WebSettings.LOAD_DEFAULT);web.setBackgroundColor(0xff08090d);final WebViewAssetLoader loader=new WebViewAssetLoader.Builder().addPathHandler("/assets/",new WebViewAssetLoader.AssetsPathHandler(this)).build();web.setWebViewClient(new WebViewClient(){@Override public WebResourceResponse shouldInterceptRequest(WebView v,WebResourceRequest r){return loader.shouldInterceptRequest(r.getUrl());}@Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){String url=r.getUrl().toString();if(url.startsWith("https://appassets.androidplatform.net/"))return false;if(!url.startsWith("http://")&&!url.startsWith("https://")){try{startActivity(new Intent(Intent.ACTION_VIEW,r.getUrl()));}catch(Exception ignored){}return true;}return false;}});web.setWebChromeClient(new WebChromeClient(){@Override public void onShowCustomView(View v,CustomViewCallback cb){fullscreen=v;fullscreenCallback=cb;frame.addView(v,new FrameLayout.LayoutParams(-1,-1));web.setVisibility(View.GONE);}@Override public void onHideCustomView(){if(fullscreen!=null){frame.removeView(fullscreen);fullscreen=null;}web.setVisibility(View.VISIBLE);if(fullscreenCallback!=null){fullscreenCallback.onCustomViewHidden();fullscreenCallback=null;}}});web.addJavascriptInterface(new Object(){@JavascriptInterface public String version(){return "17.0";}},"AndroidNative");web.loadUrl("https://appassets.androidplatform.net/assets/index.html");
- }
- @Override public void onBackPressed(){if(fullscreen!=null){web.getWebChromeClient().onHideCustomView();return;}web.evaluateJavascript("(function(){let p=document.querySelector('#player.open,#details.open,#searchPanel.open,#drawer.open');if(p){p.classList.remove('open');return true;}return false})()",v->{if("false".equals(v)){if(web.canGoBack())web.goBack();else new AlertDialog.Builder(this).setMessage("Sair do Reel Séries?").setPositiveButton("Sair",(d,w)->finish()).setNegativeButton("Cancelar",null).show();}});}
- @Override protected void onDestroy(){web.destroy();super.onDestroy();}
+    @Override public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER);
+        root.setPadding(32, 32, 32, 32);
+        root.setBackgroundColor(Color.rgb(14, 18, 29));
+        TextView title = new TextView(this);
+        title.setText("Reel Séries");
+        title.setTextSize(30);
+        title.setTextColor(Color.WHITE);
+        title.setGravity(Gravity.CENTER);
+        root.addView(title);
+        TextView info = new TextView(this);
+        info.setText("Aplicativo Android iniciado com sucesso!\\nPróxima etapa: adicionar o catálogo HTML.");
+        info.setTextSize(16);
+        info.setTextColor(Color.LTGRAY);
+        info.setGravity(Gravity.CENTER);
+        info.setPadding(0, 20, 0, 0);
+        root.addView(info);
+        setContentView(root);
+    }
 }
