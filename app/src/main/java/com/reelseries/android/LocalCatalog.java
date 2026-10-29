@@ -28,6 +28,19 @@ public class LocalCatalog extends SQLiteOpenHelper {
  public void save(SQLiteDatabase db,String id,String name,String category,String cover,String url,String synopsis,String group,String origin){android.content.ContentValues v=new android.content.ContentValues();v.put("id",id);v.put("nome",name);v.put("categoria",category);v.put("capa",cover);v.put("url",url);v.put("sinopse",synopsis);v.put("grupo",group);v.put("origem",origin);db.insertWithOnConflict("media",null,v,SQLiteDatabase.CONFLICT_REPLACE);}
  public void addStream(String name,String url){save(getWritableDatabase(),"stream_"+hash(url),name,"IPTV ao vivo","",url,"","","M3U8");}
  public ArrayList<JSONObject> search(String q,String cat,int limit){ArrayList<JSONObject> list=new ArrayList<>();String sql="SELECT id,nome,categoria,capa,url,sinopse FROM media WHERE nome LIKE ?"+(cat.equals("Todas")?"":" AND categoria=?")+" ORDER BY nome LIMIT "+Math.max(1,Math.min(300,limit));String[] args=cat.equals("Todas")?new String[]{"%"+q+"%"}:new String[]{"%"+q+"%",cat};try(Cursor c=getReadableDatabase().rawQuery(sql,args)){while(c.moveToNext()){JSONObject o=new JSONObject();try{for(int i=0;i<6;i++)o.put(c.getColumnName(i),c.getString(i));list.add(o);}catch(Exception ignored){}}}return list;}
+ public ArrayList<JSONObject> feed(String query,String mode,String category,int offset,int limit){
+  ArrayList<JSONObject> result=new ArrayList<>();String c="LOWER(COALESCE(categoria,''))", n="LOWER(COALESCE(nome,''))";
+  String tv="("+c+" LIKE '%iptv%' OR "+c+" LIKE '%canal%' OR "+c+" LIKE '%tv ao vivo%' OR "+c+"='tv' OR "+c+" LIKE '%televis%')";
+  String series="("+c+" LIKE '%serie%' OR "+c+" LIKE '%série%' OR "+c+" LIKE '%novela%' OR "+c+" LIKE '%episod%' OR "+n+" LIKE '%episodio%' OR "+n+" LIKE '%episódio%')";
+  String where=" WHERE "+n+" LIKE ?";ArrayList<String> args=new ArrayList<>();args.add("%"+query.toLowerCase(Locale.ROOT)+"%");
+  if(!"Todas".equals(category)){where+=" AND categoria=?";args.add(category);}
+  if("TV / IPTV".equals(mode))where+=" AND "+tv;
+  else if("Séries".equals(mode))where+=" AND "+series+" AND NOT "+tv;
+  else if("Filmes".equals(mode))where+=" AND NOT "+series+" AND NOT "+tv+" AND ("+c+" LIKE '%filme%' OR "+c+" LIKE '%movie%' OR "+c+" LIKE '%cinema%')";
+  String sql="SELECT id,nome,categoria,capa,url,sinopse FROM media"+where+" ORDER BY nome COLLATE NOCASE LIMIT ? OFFSET ?";
+  args.add(String.valueOf(Math.max(1,Math.min(limit,500))));args.add(String.valueOf(Math.max(0,offset)));
+  try(Cursor cur=getReadableDatabase().rawQuery(sql,args.toArray(new String[0]))){while(cur.moveToNext()){JSONObject o=new JSONObject();try{for(int i=0;i<6;i++)o.put(cur.getColumnName(i),cur.getString(i));result.add(o);}catch(Exception ignored){}}}return result;
+ }
  public ArrayList<JSONObject> page(int offset,int limit){
   ArrayList<JSONObject> result=new ArrayList<>();
   try(Cursor c=getReadableDatabase().rawQuery("SELECT id,nome,categoria,capa,url,sinopse FROM media ORDER BY nome LIMIT ? OFFSET ?",new String[]{String.valueOf(limit),String.valueOf(offset)})){
