@@ -39,8 +39,8 @@ public class PlayerActivity extends Activity {
   castButton.setContentDescription("Transmitir para TV (Google Cast)");
   FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams((int)(58*getResources().getDisplayMetrics().density),(int)(58*getResources().getDisplayMetrics().density),Gravity.TOP|Gravity.END);
   cp.setMargins(0,(int)(18*getResources().getDisplayMetrics().density),(int)(16*getResources().getDisplayMetrics().density),0);
+  CastButtonFactory.setUpMediaRouteButton(this,castButton);
   root.addView(castButton,cp);
-  CastButtonFactory.setUpMediaRouteButton(getApplicationContext(),castButton);
   castListener=new SessionManagerListener<CastSession>(){
    @Override public void onSessionStarted(CastSession session,String id){sendToTv(session);}
    @Override public void onSessionResumed(CastSession session,boolean wasSuspended){casting=true;pauseLocal();}
@@ -64,7 +64,7 @@ public class PlayerActivity extends Activity {
    root.addView(castRetry,rp);
    castRetry.setOnClickListener(v->new AlertDialog.Builder(this)
      .setTitle("Diagnóstico Google Cast")
-     .setMessage("Não foi possível inicializar o Google Cast.\n\nErro: "+castError+"\n\nVerifique se o Google Play Services está atualizado, se o Chromecast está ligado e se ambos estão na mesma rede Wi-Fi. Depois feche e abra o player novamente.")
+     .setMessage("Não foi possível inicializar o Google Cast.\n\nErro: "+castError+"\n\nO Google Cast não iniciou. A reprodução no celular continua independente do Cast. Envie esta mensagem para diagnóstico.")
      .setPositiveButton("OK",null).show());
  }
 
@@ -84,13 +84,13 @@ public class PlayerActivity extends Activity {
   Toast.makeText(this,"Enviando para a TV",Toast.LENGTH_SHORT).show();
  }
  @Override protected void onStart(){super.onStart();
- if(castContext!=null&&castListener!=null){castContext.getSessionManager().addSessionManagerListener(castListener,CastSession.class);}
+ if(castContext!=null&&castListener!=null){try{castContext.getSessionManager().addSessionManagerListener(castListener,CastSession.class);}catch(Exception e){android.util.Log.e("ReelSeriesCast","Erro ao registrar sessão",e);}}
 player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);
  player.addListener(new Player.Listener(){
   @Override public void onPlayerError(PlaybackException e){if(!isFinishing())new AlertDialog.Builder(PlayerActivity.this).setTitle("Não foi possível reproduzir").setMessage("O servidor ou o formato do vídeo pode estar indisponível.\n\n"+e.getErrorCodeName()).setPositiveButton("Voltar",(d,w)->finish()).show();}
   @Override public void onPlaybackStateChanged(int state){if(state==Player.STATE_ENDED&&!casting){markComplete();playNext();}}
  });
- player.setMediaItem(MediaItem.fromUri(url));player.prepare();long pos=restored?savedPosition:stored(url);player.seekTo(Math.max(0,pos));player.setPlayWhenReady(!casting&&playWhenReady);handler.postDelayed(periodic,5000);
+ player.setMediaItem(MediaItem.fromUri(url));player.prepare();long pos=restored?savedPosition:stored(url);if(pos>0)player.seekTo(pos);player.setPlayWhenReady(!casting&&playWhenReady);handler.postDelayed(periodic,5000);
  }
  private void playNext(){if(playlist==null||playlistIndex<0||playlistIndex+1>=playlist.length())return;
   int next=playlistIndex+1;JSONObject o=playlist.optJSONObject(next);if(o==null)return;String nextUrl=o.optString("url",o.optString("video",""));if(!nextUrl.startsWith("http"))return;
