@@ -53,9 +53,10 @@ public class MainActivity extends Activity {
  void chooseCategory(String q){mode=q;selected="Todas";if(categories!=null&&categories.getSelectedItemPosition()!=0)categories.setSelection(0);resetFeed();}
  void loadCloud(){resetFeed();}
  void resetFeed(){if(search==null||grid==null||adapter==null)return;requestVersion++;pageOffset=0;endReached=false;loadingPage=false;localPages.clear();shown.clear();adapter.notifyDataSetChanged();updateGridHeight();loadNextPage();}
- boolean matches(JSONObject o,String query){String name=o.optString("nome","");String cat=o.optString("categoria","");String c=cat.toLowerCase(java.util.Locale.ROOT);String n=name.toLowerCase(java.util.Locale.ROOT);if(!n.contains(query))return false;if(!selected.equals("Todas")&&!selected.equals(cat))return false;boolean tv=c.contains("iptv")||c.contains("canal")||c.contains("tv ao vivo")||c.equals("tv")||c.contains("televis");boolean series=c.contains("serie")||c.contains("série")||c.contains("novela")||c.contains("episod")||SeriesHelper.episode(o);if(mode.equals("TV / IPTV"))return tv;if(mode.equals("Séries"))return series&&!tv;if(mode.equals("Filmes"))return !tv&&!series&&(c.contains("filme")||c.contains("movie")||c.contains("cinema"));return true;}
+ boolean matches(JSONObject o,String query){String name=o.optString("nome","");String cat=o.optString("categoria","");String c=cat.toLowerCase(java.util.Locale.ROOT);String n=name.toLowerCase(java.util.Locale.ROOT);if(!n.contains(query))return false;if(!selected.equals("Todas")&&!selected.equals(cat))return false;boolean tv=c.contains("iptv")||c.contains("canal")||c.contains("tv ao vivo")||c.equals("tv")||c.contains("televis");boolean series=SeriesHelper.isSeries(o);if(mode.equals("TV / IPTV"))return tv;if(mode.equals("Séries"))return series&&!tv;if(mode.equals("Filmes"))return !tv&&!series&&(c.contains("filme")||c.contains("movie")||c.contains("cinema"));return true;}
  void loadNextPage(){
   if(loadingPage||endReached||pool.isShutdown())return;
+  if(mode.equals("Séries") && !all.isEmpty()){loadSeriesPage();return;}
   loadingPage=true;final int version=requestVersion,offset=pageOffset;
   final String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim(),m=mode,cat=selected;
   moreButton.setText("CARREGANDO TÍTULOS...");
@@ -71,8 +72,32 @@ public class MainActivity extends Activity {
    }catch(Exception ex){runOnUiThread(()->{if(version==requestVersion){loadingPage=false;status.setText("Erro: "+ex.getMessage());moreButton.setText("TENTAR NOVAMENTE");}});}
   });
  }
+ void loadSeriesPage(){
+  if(loadingPage||endReached)return;loadingPage=true;
+  final int version=requestVersion,offset=pageOffset;
+  final String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim(),cat=selected;
+  moreButton.setText("CARREGANDO SÉRIES...");
+  pool.execute(()->{
+   ArrayList<JSONObject> page=new ArrayList<>();HashSet<String> seen=new HashSet<>();int skipped=0;
+   for(JSONObject o:all){
+    if(!SeriesHelper.isSeries(o))continue;
+    String key=SeriesHelper.key(o);if(key.isEmpty()||!seen.add(key))continue;
+    if(!cat.equals("Todas")&&!cat.equals(o.optString("categoria")))continue;
+    if(!key.contains(q))continue;
+    if(skipped++<offset)continue;
+    if(page.size()<60)page.add(o);else break;
+   }
+   final boolean hasMore=skipped>offset+page.size();
+   runOnUiThread(()->{if(version!=requestVersion)return;
+    localPages.clear();localPages.addAll(page);pageOffset=offset+page.size();
+    endReached=!hasMore;loadingPage=false;filter();
+    moreButton.setVisibility(endReached?View.GONE:View.VISIBLE);
+    moreButton.setText("PRÓXIMAS 60 SÉRIES  ↓");
+   });
+  });
+ }
  void refreshLocal(){resetFeed();}
- void filter(){if(adapter==null)return;String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim();shown.clear();java.util.HashSet<String> ids=new java.util.HashSet<>(),grouped=new java.util.HashSet<>();ArrayList<JSONObject> combined=new ArrayList<>(localPages);if(combined.isEmpty() && pageOffset==0){int added=0;for(JSONObject fallback:all){if(matches(fallback,q)){combined.add(fallback);if(++added>=60)break;}}}for(JSONObject o:combined){if(!matches(o,q))continue;String id=o.optString("id","");if(!id.isEmpty()&&!ids.add(id))continue;if(mode.equals("Séries")&&SeriesHelper.episode(o)){String k=SeriesHelper.key(o);if(!grouped.add(k))continue;}shown.add(o);}status.setText(shown.size()+" nesta página • "+all.size()+" no APK • "+pageOffset+" registros locais consultados");adapter.notifyDataSetChanged();updateGridHeight();}
+ void filter(){if(adapter==null)return;String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim();shown.clear();java.util.HashSet<String> ids=new java.util.HashSet<>(),grouped=new java.util.HashSet<>();ArrayList<JSONObject> combined=new ArrayList<>(localPages);if(combined.isEmpty() && pageOffset==0){int added=0;for(JSONObject fallback:all){if(matches(fallback,q)){combined.add(fallback);if(++added>=60)break;}}}for(JSONObject o:combined){if(!matches(o,q))continue;String id=o.optString("id","");if(!id.isEmpty()&&!ids.add(id))continue;if(SeriesHelper.isSeries(o)){String k=SeriesHelper.key(o);if(!grouped.add(k))continue;}shown.add(o);}status.setText(shown.size()+" nesta página • "+all.size()+" no APK • "+pageOffset+" registros locais consultados");adapter.notifyDataSetChanged();updateGridHeight();}
  void updateGridHeight(){/* GridView com altura fixa: recicla cartões e carrega capas somente quando visíveis. */}
  @Override protected void onResume(){super.onResume();if(search!=null)resetFeed();}
  void details(JSONObject o){Intent i=new Intent(this,DetailsActivity.class);i.putExtra("item",o.toString());startActivity(i);}
