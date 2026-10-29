@@ -33,7 +33,7 @@ public class MainActivity extends Activity {
  search=new EditText(this);search.setSingleLine(true);search.setHint("Pesquisar filme, série ou episódio");search.setTextColor(fg);search.setHintTextColor(0xff9fa5b3);search.setBackgroundColor(0xff171e2a);search.setPadding(dp(12),0,dp(12),0);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,dp(48));sp.topMargin=dp(14);content.addView(search,sp);
  LinearLayout sort=new LinearLayout(this);sort.setGravity(Gravity.CENTER_VERTICAL);sort.setPadding(0,dp(10),0,0);content.addView(sort);TextView heading=navText("Em destaque",23);heading.setTypeface(null,1);sort.addView(heading,new LinearLayout.LayoutParams(0,-2,1));categories=new Spinner(this);sort.addView(categories,new LinearLayout.LayoutParams(dp(155),dp(48)));catNames.add("Todas");categories.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,catNames));
  status=navText("Carregando catálogo...",12);status.setTextColor(0xffaeb6c7);content.addView(status);
- grid=new GridView(this);grid.setNumColumns(3);grid.setVerticalSpacing(dp(12));grid.setHorizontalSpacing(dp(9));grid.setClipToPadding(false);grid.setPadding(0,dp(10),0,dp(12));grid.setNestedScrollingEnabled(false);content.addView(grid,new LinearLayout.LayoutParams(-1,dp(320)));moreButton=actionText("CARREGAR MAIS TÍTULOS  ↓",false);LinearLayout.LayoutParams moreParams=new LinearLayout.LayoutParams(-1,dp(52));moreParams.topMargin=dp(10);content.addView(moreButton,moreParams);moreButton.setOnClickListener(v->loadNextPage());setContentView(layout);
+ grid=new GridView(this);grid.setNumColumns(3);grid.setVerticalSpacing(dp(12));grid.setHorizontalSpacing(dp(9));grid.setClipToPadding(false);grid.setPadding(0,dp(10),0,dp(12));grid.setNestedScrollingEnabled(true);content.addView(grid,new LinearLayout.LayoutParams(-1,dp(460)));moreButton=actionText("CARREGAR MAIS TÍTULOS  ↓",false);LinearLayout.LayoutParams moreParams=new LinearLayout.LayoutParams(-1,dp(52));moreParams.topMargin=dp(10);content.addView(moreButton,moreParams);moreButton.setOnClickListener(v->loadNextPage());setContentView(layout);
  LinearLayout bottom=new LinearLayout(this);bottom.setGravity(Gravity.CENTER);bottom.setBackgroundColor(0xff101622);layout.addView(bottom,new LinearLayout.LayoutParams(-1,dp(62)));
  String[] tabs={"⌂\nInício","▶\nFilmes","▣\nSéries","▤\nLista","⌕\nBuscar"};for(int t=0;t<tabs.length;t++){final int idx=t;TextView tab=navText(tabs[t],12);tab.setGravity(Gravity.CENTER);bottom.addView(tab,new LinearLayout.LayoutParams(0,-1,1));tab.setOnClickListener(v->{if(idx==4){search.requestFocus();((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(search,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);}else chooseCategory(idx==0?"Todos":idx==1?"Filmes":idx==2?"Séries":"TV / IPTV");});}
  adapter=new BaseAdapter(){public int getCount(){return shown.size();}public Object getItem(int p){return shown.get(p);}public long getItemId(int p){return p;}
@@ -58,24 +58,24 @@ public class MainActivity extends Activity {
   if(loadingPage||endReached||pool.isShutdown())return;
   loadingPage=true;final int version=requestVersion,offset=pageOffset;
   final String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim(),m=mode,cat=selected;
-  moreButton.setText("CARREGANDO 500 TÍTULOS...");
+  moreButton.setText("CARREGANDO TÍTULOS...");
   pool.execute(()->{
    try(LocalCatalog db=new LocalCatalog(this)){
-    ArrayList<JSONObject> page=db.feed(q,m,cat,offset,500);
+    ArrayList<JSONObject> page=db.feed(q,m,cat,offset,60);
     final int count=page.size();
     runOnUiThread(()->{if(version!=requestVersion)return;
-     pageOffset=offset+count;localPages.clear();localPages.addAll(page);endReached=count<500;loadingPage=false;
+     pageOffset=offset+count;localPages.clear();localPages.addAll(page);endReached=count<60;loadingPage=false;
      filter();moreButton.setVisibility(endReached?View.GONE:View.VISIBLE);
-     moreButton.setText("PRÓXIMOS 500 TÍTULOS  ↓");
+     moreButton.setText("PRÓXIMOS 60 TÍTULOS  ↓");
     });
    }catch(Exception ex){runOnUiThread(()->{if(version==requestVersion){loadingPage=false;status.setText("Erro: "+ex.getMessage());moreButton.setText("TENTAR NOVAMENTE");}});}
   });
  }
  void refreshLocal(){resetFeed();}
- void filter(){if(adapter==null)return;String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim();shown.clear();java.util.HashSet<String> ids=new java.util.HashSet<>(),grouped=new java.util.HashSet<>();ArrayList<JSONObject> combined=new ArrayList<>(localPages);if(localPages.isEmpty() && pageOffset==0)combined.addAll(all);for(JSONObject o:combined){if(!matches(o,q))continue;String id=o.optString("id","");if(!id.isEmpty()&&!ids.add(id))continue;if(mode.equals("Séries")&&SeriesHelper.episode(o)){String k=SeriesHelper.key(o);if(!grouped.add(k))continue;}shown.add(o);}status.setText(shown.size()+" exibidos • "+all.size()+" no APK • "+pageOffset+" registros locais consultados");adapter.notifyDataSetChanged();updateGridHeight();}
- void updateGridHeight(){if(grid==null)return;int rows=(shown.size()+2)/3;android.view.ViewGroup.LayoutParams p=grid.getLayoutParams();if(p!=null){p.height=dp(Math.max(30,rows*205+16));grid.setLayoutParams(p);}}
+ void filter(){if(adapter==null)return;String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim();shown.clear();java.util.HashSet<String> ids=new java.util.HashSet<>(),grouped=new java.util.HashSet<>();ArrayList<JSONObject> combined=new ArrayList<>(localPages);/* Sem carregar milhares de itens do APK no GridView como fallback. */for(JSONObject o:combined){if(!matches(o,q))continue;String id=o.optString("id","");if(!id.isEmpty()&&!ids.add(id))continue;if(mode.equals("Séries")&&SeriesHelper.episode(o)){String k=SeriesHelper.key(o);if(!grouped.add(k))continue;}shown.add(o);}status.setText(shown.size()+" nesta página • "+all.size()+" no APK • "+pageOffset+" registros locais consultados");adapter.notifyDataSetChanged();updateGridHeight();}
+ void updateGridHeight(){/* GridView com altura fixa: recicla cartões e carrega capas somente quando visíveis. */}
  @Override protected void onResume(){super.onResume();if(search!=null)resetFeed();}
  void details(JSONObject o){Intent i=new Intent(this,DetailsActivity.class);i.putExtra("item",o.toString());startActivity(i);}
- void loadCover(String url,ImageView image){image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag()))image.setImageBitmap(bitmap);});}}catch(Exception ignored){}});}
+ void loadCover(String url,ImageView image){if(url.equals(image.getTag()) && image.getDrawable()!=null)return;image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag()))image.setImageBitmap(bitmap);});}}catch(Exception ignored){}});}
  @Override protected void onDestroy(){pool.shutdownNow();super.onDestroy();}
 }
