@@ -32,7 +32,18 @@ public class DetailsActivity extends Activity {
      java.util.ArrayList<Integer> keys=new java.util.ArrayList<>(grouped.keySet());java.util.ArrayList<String> labels=new java.util.ArrayList<>();for(Integer k:keys)labels.add("Temporada "+k+" • "+grouped.get(k).size()+" episódios");
      seasons.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,labels));
      seasons.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> p){}public void onItemSelected(android.widget.AdapterView<?> p,View v,int index,long id){episodes.removeAllViews();if(index>=keys.size())return;for(java.util.Map.Entry<Integer,JSONObject> entry:grouped.get(keys.get(index)).entrySet()){
-      JSONObject item=entry.getValue();TextView row=text("▶  Episódio "+entry.getKey(),16,0xffffffff);row.setPadding(dp(14),dp(12),dp(14),dp(12));row.setBackgroundColor(0xff1d2838);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(6);episodes.addView(row,lp);row.setOnClickListener(x->{String url=item.optString("url",item.optString("video",""));if(!url.startsWith("http")){new AlertDialog.Builder(DetailsActivity.this).setMessage("Vídeo indisponível neste episódio.").setPositiveButton("OK",null).show();return;}Intent intent=new Intent(DetailsActivity.this,PlayerActivity.class);intent.putExtra("url",url);intent.putExtra("name",SeriesHelper.name(item)+" • T"+keys.get(index)+" E"+entry.getKey());startActivity(intent);});
+      JSONObject item=entry.getValue();TextView row=text("▶  Episódio "+entry.getKey(),16,0xffffffff);row.setPadding(dp(14),dp(12),dp(14),dp(12));row.setBackgroundColor(0xff1d2838);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(6);episodes.addView(row,lp);row.setOnClickListener(x->{String url=item.optString("url",item.optString("video",""));if(!url.startsWith("http")){new AlertDialog.Builder(DetailsActivity.this).setMessage("Vídeo indisponível neste episódio.").setPositiveButton("OK",null).show();return;}Intent intent=new Intent(DetailsActivity.this,PlayerActivity.class);intent.putExtra("url",url);intent.putExtra("name",SeriesHelper.name(item)+" • T"+keys.get(index)+" E"+entry.getKey());
+      org.json.JSONArray playlist=new org.json.JSONArray();int startIndex=-1;
+      for(java.util.Map.Entry<Integer,java.util.TreeMap<Integer,JSONObject>> seasonEntry:grouped.entrySet()){
+       for(java.util.Map.Entry<Integer,JSONObject> epEntry:seasonEntry.getValue().entrySet()){
+        JSONObject episodeItem=epEntry.getValue();String epUrl=episodeItem.optString("url",episodeItem.optString("video",""));
+        if(!epUrl.startsWith("http"))continue;
+        if(seasonEntry.getKey().equals(keys.get(index))&&epEntry.getKey().equals(entry.getKey()))startIndex=playlist.length();
+        JSONObject record=new JSONObject();try{record.put("url",epUrl);record.put("name",SeriesHelper.name(item)+" • T"+seasonEntry.getKey()+" E"+epEntry.getKey());playlist.put(record);}catch(Exception ignored){}
+       }
+      }
+      if(startIndex>=0){intent.putExtra("playlist",playlist.toString());intent.putExtra("playlistIndex",startIndex);}
+      startActivity(intent);});
      }}});
      int wantedSeason=SeriesHelper.numbers(selected)[0];int idx=keys.indexOf(wantedSeason);if(idx>=0)seasons.setSelection(idx);
     });

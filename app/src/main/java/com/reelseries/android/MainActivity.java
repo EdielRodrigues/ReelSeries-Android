@@ -4,7 +4,7 @@ import android.app.*;import android.os.*;import android.content.*;import android
 
 public class MainActivity extends Activity {
  final ArrayList<JSONObject> all=new ArrayList<>(), shown=new ArrayList<>(); final java.util.HashMap<String,JSONObject> cloud=new java.util.HashMap<>();
- final ExecutorService pool=Executors.newFixedThreadPool(3); final android.util.LruCache<String,Bitmap> cache=new android.util.LruCache<String,Bitmap>(40);
+ final ExecutorService pool=Executors.newFixedThreadPool(3); final android.util.LruCache<String,Bitmap> cache=new android.util.LruCache<String,Bitmap>(16);
  GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos"; int pageOffset=0; boolean loadingPage=false, endReached=false; TextView moreButton; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
  int bg=Color.rgb(12,16,27), fg=Color.WHITE; final ArrayList<String> catNames=new ArrayList<>();
  int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
@@ -37,10 +37,12 @@ public class MainActivity extends Activity {
  LinearLayout bottom=new LinearLayout(this);bottom.setGravity(Gravity.CENTER);bottom.setBackgroundColor(0xff101622);layout.addView(bottom,new LinearLayout.LayoutParams(-1,dp(62)));
  String[] tabs={"⌂\nInício","▶\nFilmes","▣\nSéries","▤\nLista","⌕\nBuscar"};for(int t=0;t<tabs.length;t++){final int idx=t;TextView tab=navText(tabs[t],12);tab.setGravity(Gravity.CENTER);bottom.addView(tab,new LinearLayout.LayoutParams(0,-1,1));tab.setOnClickListener(v->{if(idx==4){search.requestFocus();((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(search,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);}else chooseCategory(idx==0?"Todos":idx==1?"Filmes":idx==2?"Séries":"TV / IPTV");});}
  adapter=new BaseAdapter(){public int getCount(){return shown.size();}public Object getItem(int p){return shown.get(p);}public long getItemId(int p){return p;}
- public View getView(int p,View old,android.view.ViewGroup parent){LinearLayout box=new LinearLayout(MainActivity.this);box.setOrientation(1);box.setBackgroundColor(0xff1c2432);box.setPadding(dp(5),dp(5),dp(5),dp(7));
- ImageView cover=new ImageView(MainActivity.this);cover.setBackgroundColor(0xff30394b);cover.setScaleType(ImageView.ScaleType.CENTER_CROP);box.addView(cover,new LinearLayout.LayoutParams(-1,dp(165)));
- TextView label=new TextView(MainActivity.this);JSONObject item=shown.get(p);label.setText(item.optString("nome"));label.setTextColor(fg);label.setTextSize(12);label.setMaxLines(2);label.setEllipsize(android.text.TextUtils.TruncateAt.END);box.addView(label);
- loadCover(item.optString("capa"),cover);return box;}};grid.setAdapter(adapter);
+ public View getView(int p,View old,android.view.ViewGroup parent){
+ LinearLayout box;ImageView cover;TextView label;
+ if(old instanceof LinearLayout && ((LinearLayout)old).getChildCount()==2){box=(LinearLayout)old;cover=(ImageView)box.getChildAt(0);label=(TextView)box.getChildAt(1);}
+ else{box=new LinearLayout(MainActivity.this);box.setOrientation(1);box.setBackgroundColor(0xff1c2432);box.setPadding(dp(5),dp(5),dp(5),dp(7));cover=new ImageView(MainActivity.this);cover.setBackgroundColor(0xff30394b);cover.setScaleType(ImageView.ScaleType.CENTER_CROP);box.addView(cover,new LinearLayout.LayoutParams(-1,dp(165)));label=new TextView(MainActivity.this);label.setTextColor(fg);label.setTextSize(12);label.setMaxLines(2);label.setEllipsize(android.text.TextUtils.TruncateAt.END);box.addView(label);}
+ JSONObject item=shown.get(p);label.setText(item.optString("nome"));loadCover(item.optString("capa"),cover);return box;
+ }};grid.setAdapter(adapter);
  grid.setOnItemClickListener((a,v,p,id)->details(shown.get(p)));
  search.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int c,int af){}public void onTextChanged(CharSequence s,int st,int before,int count){if(pending!=null)handler.removeCallbacks(pending);pending=()->resetFeed();handler.postDelayed(pending,220);}public void afterTextChanged(Editable e){}});
  categories.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> p){}public void onItemSelected(android.widget.AdapterView<?> p,View v,int pos,long id){selected=catNames.get(pos);resetFeed();}});
@@ -52,12 +54,28 @@ public class MainActivity extends Activity {
  void loadCloud(){resetFeed();}
  void resetFeed(){if(search==null||grid==null||adapter==null)return;requestVersion++;pageOffset=0;endReached=false;loadingPage=false;localPages.clear();shown.clear();adapter.notifyDataSetChanged();updateGridHeight();loadNextPage();}
  boolean matches(JSONObject o,String query){String name=o.optString("nome","");String cat=o.optString("categoria","");String c=cat.toLowerCase(java.util.Locale.ROOT);String n=name.toLowerCase(java.util.Locale.ROOT);if(!n.contains(query))return false;if(!selected.equals("Todas")&&!selected.equals(cat))return false;boolean tv=c.contains("iptv")||c.contains("canal")||c.contains("tv ao vivo")||c.equals("tv")||c.contains("televis");boolean series=c.contains("serie")||c.contains("série")||c.contains("novela")||c.contains("episod")||SeriesHelper.episode(o);if(mode.equals("TV / IPTV"))return tv;if(mode.equals("Séries"))return series&&!tv;if(mode.equals("Filmes"))return !tv&&!series&&(c.contains("filme")||c.contains("movie")||c.contains("cinema"));return true;}
- void loadNextPage(){if(loadingPage||endReached||pool.isShutdown())return;loadingPage=true;final int version=requestVersion;final int offset=pageOffset;final String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim();final String m=mode;final String cat=selected;moreButton.setText("CARREGANDO...");pool.execute(()->{ArrayList<JSONObject> result=new ArrayList<>();int next=offset;boolean done=false;try(LocalCatalog db=new LocalCatalog(this)){while(result.size()<90){ArrayList<JSONObject> page=db.feed(q,m,cat,next,250);next+=page.size();result.addAll(page);if(page.size()<250){done=true;break;}if(next-offset>=1500)break;}}catch(Exception ex){runOnUiThread(()->{if(version==requestVersion){loadingPage=false;status.setText("Erro: "+ex.getMessage());}});return;}final int nextOffset=next;final boolean last=done;runOnUiThread(()->{if(version!=requestVersion)return;pageOffset=nextOffset;localPages.addAll(result);endReached=last;loadingPage=false;filter();moreButton.setVisibility(endReached?View.GONE:View.VISIBLE);moreButton.setText("CARREGAR MAIS TÍTULOS  ↓");});});}
+ void loadNextPage(){
+  if(loadingPage||endReached||pool.isShutdown())return;
+  loadingPage=true;final int version=requestVersion,offset=pageOffset;
+  final String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim(),m=mode,cat=selected;
+  moreButton.setText("CARREGANDO 500 TÍTULOS...");
+  pool.execute(()->{
+   try(LocalCatalog db=new LocalCatalog(this)){
+    ArrayList<JSONObject> page=db.feed(q,m,cat,offset,500);
+    final int count=page.size();
+    runOnUiThread(()->{if(version!=requestVersion)return;
+     pageOffset=offset+count;localPages.clear();localPages.addAll(page);endReached=count<500;loadingPage=false;
+     filter();moreButton.setVisibility(endReached?View.GONE:View.VISIBLE);
+     moreButton.setText("PRÓXIMOS 500 TÍTULOS  ↓");
+    });
+   }catch(Exception ex){runOnUiThread(()->{if(version==requestVersion){loadingPage=false;status.setText("Erro: "+ex.getMessage());moreButton.setText("TENTAR NOVAMENTE");}});}
+  });
+ }
  void refreshLocal(){resetFeed();}
- void filter(){if(adapter==null)return;String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim();shown.clear();java.util.HashSet<String> ids=new java.util.HashSet<>(),grouped=new java.util.HashSet<>();ArrayList<JSONObject> combined=new ArrayList<>(localPages);combined.addAll(all);for(JSONObject o:combined){if(!matches(o,q))continue;String id=o.optString("id","");if(!id.isEmpty()&&!ids.add(id))continue;if(mode.equals("Séries")&&SeriesHelper.episode(o)){String k=SeriesHelper.key(o);if(!grouped.add(k))continue;}shown.add(o);}status.setText(shown.size()+" exibidos • "+all.size()+" no APK • "+pageOffset+" registros locais consultados");adapter.notifyDataSetChanged();updateGridHeight();}
+ void filter(){if(adapter==null)return;String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim();shown.clear();java.util.HashSet<String> ids=new java.util.HashSet<>(),grouped=new java.util.HashSet<>();ArrayList<JSONObject> combined=new ArrayList<>(localPages);if(localPages.isEmpty() && pageOffset==0)combined.addAll(all);for(JSONObject o:combined){if(!matches(o,q))continue;String id=o.optString("id","");if(!id.isEmpty()&&!ids.add(id))continue;if(mode.equals("Séries")&&SeriesHelper.episode(o)){String k=SeriesHelper.key(o);if(!grouped.add(k))continue;}shown.add(o);}status.setText(shown.size()+" exibidos • "+all.size()+" no APK • "+pageOffset+" registros locais consultados");adapter.notifyDataSetChanged();updateGridHeight();}
  void updateGridHeight(){if(grid==null)return;int rows=(shown.size()+2)/3;android.view.ViewGroup.LayoutParams p=grid.getLayoutParams();if(p!=null){p.height=dp(Math.max(30,rows*205+16));grid.setLayoutParams(p);}}
  @Override protected void onResume(){super.onResume();if(search!=null)resetFeed();}
  void details(JSONObject o){Intent i=new Intent(this,DetailsActivity.class);i.putExtra("item",o.toString());startActivity(i);}
- void loadCover(String url,ImageView image){image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=2;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag()))image.setImageBitmap(bitmap);});}}catch(Exception ignored){}});}
+ void loadCover(String url,ImageView image){image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag()))image.setImageBitmap(bitmap);});}}catch(Exception ignored){}});}
  @Override protected void onDestroy(){pool.shutdownNow();super.onDestroy();}
 }
