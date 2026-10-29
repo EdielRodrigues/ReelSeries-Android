@@ -14,6 +14,7 @@ import org.json.*;import java.security.MessageDigest;import java.nio.charset.Sta
 public class PlayerActivity extends Activity {
  private ExoPlayer player;private PlayerView playerView;private long savedPosition=0;private String url;private boolean playWhenReady=true;
  private CastContext castContext;
+ private String castError="";
  private SessionManagerListener<CastSession> castListener;
  private boolean casting=false;
  private String displayName="";
@@ -51,7 +52,21 @@ public class PlayerActivity extends Activity {
    @Override public void onSessionResumeFailed(CastSession session,int error){casting=false;}
    @Override public void onSessionSuspended(CastSession session,int reason){}
   };
- }catch(Exception e){Toast.makeText(this,"Google Cast indisponível neste aparelho",Toast.LENGTH_LONG).show();}
+ }catch(Exception e){
+   castError=e.getClass().getSimpleName()+": "+String.valueOf(e.getMessage());
+   android.util.Log.e("ReelSeriesCast","Falha ao inicializar Google Cast",e);
+   TextView castRetry=new TextView(this);
+   castRetry.setText("📺 Cast: verificar conexão");castRetry.setTextColor(0xffffffff);
+   castRetry.setTextSize(12);castRetry.setGravity(Gravity.CENTER);
+   castRetry.setBackgroundColor(0xaa222222);
+   FrameLayout.LayoutParams rp=new FrameLayout.LayoutParams((int)(185*getResources().getDisplayMetrics().density),(int)(48*getResources().getDisplayMetrics().density),Gravity.TOP|Gravity.END);
+   rp.setMargins(0,(int)(18*getResources().getDisplayMetrics().density),(int)(12*getResources().getDisplayMetrics().density),0);
+   root.addView(castRetry,rp);
+   castRetry.setOnClickListener(v->new AlertDialog.Builder(this)
+     .setTitle("Diagnóstico Google Cast")
+     .setMessage("Não foi possível inicializar o Google Cast.\n\nErro: "+castError+"\n\nVerifique se o Google Play Services está atualizado, se o Chromecast está ligado e se ambos estão na mesma rede Wi-Fi. Depois feche e abra o player novamente.")
+     .setPositiveButton("OK",null).show());
+ }
 
  if(b!=null){savedPosition=b.getLong("position",0);playWhenReady=b.getBoolean("playing",true);restored=true;playlistIndex=b.getInt("playlistIndex",playlistIndex);url=b.getString("url",url);}
  }
@@ -78,7 +93,7 @@ player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);
  player.setMediaItem(MediaItem.fromUri(url));player.prepare();long pos=restored?savedPosition:stored(url);player.seekTo(Math.max(0,pos));player.setPlayWhenReady(!casting&&playWhenReady);handler.postDelayed(periodic,5000);
  }
  private void playNext(){if(playlist==null||playlistIndex<0||playlistIndex+1>=playlist.length())return;
-  int next=playlistIndex+1;JSONObject o=playlist.optJSONObject(next);if(o==null)return;String nextUrl=o.optString("url","");if(!nextUrl.startsWith("http"))return;
+  int next=playlistIndex+1;JSONObject o=playlist.optJSONObject(next);if(o==null)return;String nextUrl=o.optString("url",o.optString("video",""));if(!nextUrl.startsWith("http"))return;
   playlistIndex=next;url=nextUrl;savedPosition=stored(url);restored=false;playWhenReady=true;
   if(casting&&castContext!=null){CastSession session=castContext.getSessionManager().getCurrentCastSession();if(session!=null&&session.isConnected()){sendToTv(session);return;}casting=false;}
   player.setMediaItem(MediaItem.fromUri(url));player.prepare();player.seekTo(savedPosition);player.setPlayWhenReady(true);
