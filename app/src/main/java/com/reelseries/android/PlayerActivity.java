@@ -10,9 +10,8 @@ import com.google.android.gms.cast.framework.SessionManagerListener;
 import com.google.android.gms.cast.framework.media.RemoteMediaClient;
 import com.google.android.gms.cast.MediaLoadOptions;
 import androidx.mediarouter.app.MediaRouteButton;
-import androidx.appcompat.app.AppCompatActivity;
 import org.json.*;import java.security.MessageDigest;import java.nio.charset.StandardCharsets;
-public class PlayerActivity extends AppCompatActivity {
+public class PlayerActivity extends Activity {
  private ExoPlayer player;private PlayerView playerView;private long savedPosition=0;private String url;private boolean playWhenReady=true;
  private CastContext castContext;
  private String castError="";
