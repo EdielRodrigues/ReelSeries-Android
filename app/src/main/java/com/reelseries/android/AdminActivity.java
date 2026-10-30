@@ -39,30 +39,33 @@ public class AdminActivity extends Activity {
  private void login(){authorized=false;screen("Acesso protegido");if(auth.getCurrentUser()!=null){verify();return;}EditText email=field("E-mail"),pass=field("Senha");pass.setInputType(129);button("Entrar",()->{msg("Autenticando...");auth.signInWithEmailAndPassword(email.getText().toString().trim(),pass.getText().toString()).addOnSuccessListener(x->verify()).addOnFailureListener(e->msg(e.getMessage()));});}
  private void verify(){if(auth.getCurrentUser()==null){login();return;}msg("Verificando administrador...");firestore.collection("admins").document(auth.getCurrentUser().getUid()).get().addOnSuccessListener(d->{if(d.exists()&&Boolean.TRUE.equals(d.getBoolean("active"))&&"admin".equals(d.getString("role"))){authorized=true;dashboard();seedBundledCatalog();}else{msg("Conta sem autorização.");button("Trocar conta",()->{auth.signOut();login();});}}).addOnFailureListener(e->msg("Erro de autorização: "+e.getMessage()));}
  private TextView panelText(String text,int size){TextView t=new TextView(this);t.setText(text);t.setTextColor(-1);t.setTextSize(size);t.setPadding(18,15,18,15);return t;}
- private void dashboard(){if(!authorized){login();return;}screen("Central administrativa V19");msg("Catálogo local SQLite • Acesso protegido pelo Firebase");
-  LinearLayout stats=new LinearLayout(this);stats.setOrientation(0);LinearLayout.LayoutParams stlp=new LinearLayout.LayoutParams(-1,-2);stlp.topMargin=dp(15);root.addView(stats,stlp);
-  TextView total=panelText("REGISTROS LOCAIS\n"+catalog.count(),19);total.setBackground(shape(0xff1c2b40,15));stats.addView(total,new LinearLayout.LayoutParams(0,-2,1));
-  TextView apk=panelText("ARMAZENAMENTO\nNeste celular",16);apk.setBackground(shape(0xff1c2b40,15));LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,-2,1);ap.leftMargin=dp(10);stats.addView(apk,ap);
-  section("Importação e playlists");
-  button("🔗  Importar playlist M3U por link",()->urlDialog(false));
-  button("⇧  Importar arquivo M3U",()->pick(M3U));
-  button("⇧  Importar arquivo JSON",()->pick(JSON));
+ private LinearLayout tile(String icon,String value,String subtitle,Runnable action){
+  LinearLayout tile=new LinearLayout(this);tile.setOrientation(1);tile.setPadding(dp(16),dp(16),dp(12),dp(16));tile.setBackground(shape(0xff08090d,18));tile.setMinimumHeight(dp(136));
+  TextView glyph=new TextView(this);glyph.setText(icon);glyph.setTextColor(0xffa8afb9);glyph.setTextSize(22);tile.addView(glyph);
+  TextView main=new TextView(this);main.setText(value);main.setTextColor(Color.WHITE);main.setTypeface(null,1);main.setTextSize(20);main.setPadding(0,dp(10),0,dp(6));tile.addView(main);
+  TextView detail=new TextView(this);detail.setText(subtitle);detail.setTextColor(0xffaeb1b8);detail.setTextSize(13);tile.addView(detail);
+  tile.setOnClickListener(v->action.run());return tile;
+ }
+ private void tileRow(LinearLayout left,LinearLayout right){LinearLayout row=new LinearLayout(this);row.setOrientation(0);LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.topMargin=dp(10);root.addView(row,rp);LinearLayout.LayoutParams a=new LinearLayout.LayoutParams(0,-2,1);row.addView(left,a);LinearLayout.LayoutParams b=new LinearLayout.LayoutParams(0,-2,1);b.leftMargin=dp(10);row.addView(right,b);}
+ private void dashboard(){if(!authorized){login();return;}
+  screen("Central Administrativa");msg("Painel Premium V19.1  •  Catálogo salvo neste aparelho");
+  tileRow(tile("▤",java.text.NumberFormat.getIntegerInstance(new java.util.Locale("pt","BR")).format(catalog.count()),"Registros locais",()->browseTitles(0)),tile("☷","M3U / M3U8","Importação",()->urlDialog(false)));
+  tileRow(tile("▣","Catálogo","Gerenciamento",this::manageTitles),tile("⚙","Sistema","Configurações",this::settingsPanel));
+  section("Importar playlist");
+  button("🔗  Adicionar link de playlist M3U",()->urlDialog(false));
+  button("⇧  Importar arquivo M3U ou JSON",()->new AlertDialog.Builder(this).setItems(new String[]{"Arquivo M3U","Arquivo JSON"},(d,w)->pick(w==0?M3U:JSON)).show());
   button("▶  Adicionar transmissão M3U8",()->urlDialog(true));
-  button("↻  Atualizar playlist por URL",()->urlDialog(false));
-  section("Gerenciar catálogo");
+  section("Gerenciamento rápido");
   button("＋  Adicionar filme, série ou canal",this::manual);
   button("⌕  Pesquisar e editar títulos",this::manageTitles);
   button("▦  Ver todos os títulos",()->browseTitles(0));
-  section("Estatísticas e diagnóstico");
-  button("◉  Estatísticas do catálogo",this::statistics);
-  button("⚠  Títulos sem vídeo",()->diagnostic("sem_video",0));
-  button("▧  Títulos sem capa",()->diagnostic("sem_capa",0));
-  button("≡  Categorias vazias",()->diagnostic("sem_categoria",0));
-  section("Configurações e segurança");
-  button("⇩  Exportar backup JSON",this::exportCatalog);
-  button("↻  Atualizar painel",this::dashboard);
-  button("♟  Permissões administrativas",()->new AlertDialog.Builder(this).setTitle("Segurança do administrador").setMessage("O acesso é validado no Firebase Firestore em admins/{uid}, com active=true e role=admin. Para gerenciar outros administradores são necessárias regras seguras no servidor.").setPositiveButton("Entendi",null).show());
-  button("Sair da conta",()->{auth.signOut();login();});
+  button("◉  Estatísticas e diagnósticos",this::statistics);
+  button("⚙  Configurações e segurança",this::settingsPanel);
+ }
+ private void settingsPanel(){screen("Configurações do sistema");msg("Reel Séries • Administração local e acesso Firebase");
+  section("Importação");button("↻  Atualizar playlist por URL",()->urlDialog(false));button("⇧  Importar arquivo JSON",()->pick(JSON));button("⇧  Importar arquivo M3U",()->pick(M3U));
+  section("Diagnósticos");button("⚠  Títulos sem vídeo",()->diagnostic("sem_video",0));button("▧  Títulos sem capa",()->diagnostic("sem_capa",0));button("≡  Categorias vazias",()->diagnostic("sem_categoria",0));
+  section("Backup e segurança");button("⇩  Exportar backup JSON",this::exportCatalog);button("♟  Permissões administrativas",()->new AlertDialog.Builder(this).setTitle("Acesso administrativo").setMessage("O acesso é validado no Firestore em admins/{uid}, com active=true e role=admin.").setPositiveButton("OK",null).show());button("↻  Atualizar painel",this::dashboard);button("Sair da conta",()->{auth.signOut();login();});button("←  Voltar",this::dashboard);
  }
  private void seedBundledCatalog(){
   worker.execute(()->{
