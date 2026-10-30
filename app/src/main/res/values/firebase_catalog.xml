@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Cole a URL exata do seu Firebase Realtime Database, sem barra final. -->
+    <string name="firebase_catalog_url">https://smart-tv-c175a-default-rtdb.firebaseio.com</string>
+</resources>
