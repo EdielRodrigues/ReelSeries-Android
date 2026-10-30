@@ -117,7 +117,7 @@ public class MainActivity extends Activity {
   android.view.ViewGroup.LayoutParams params=grid.getLayoutParams();
   if(params!=null&&params.height!=height){params.height=height;grid.setLayoutParams(params);}
  }
- @Override protected void onResume(){super.onResume();if(search!=null)resetFeed();}
+ @Override protected void onResume(){super.onResume();if(search!=null){resetFeed();if(FirebaseCatalogSync.configured(this))loadCloud();}}
  void details(JSONObject o){Intent i=new Intent(this,DetailsActivity.class);i.putExtra("item",o.toString());startActivity(i);}
  void loadCover(String url,ImageView image){if(url.equals(image.getTag()) && image.getDrawable()!=null)return;image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag()))image.setImageBitmap(bitmap);});}}catch(Exception ignored){}});}
  @Override protected void onDestroy(){pool.shutdownNow();super.onDestroy();}
