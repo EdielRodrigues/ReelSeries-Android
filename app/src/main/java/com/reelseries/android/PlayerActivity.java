@@ -23,6 +23,7 @@ public class PlayerActivity extends Activity {
  private MediaRouter mediaRouter;
  private MediaRouter.Callback routeCallback;
  private String displayName="";
+ private AlertDialog tvDialog;
  private JSONArray playlist;private int playlistIndex=-1;private boolean restored=false;
  private final Handler handler=new Handler(Looper.getMainLooper());
  private final Runnable periodic=new Runnable(){@Override public void run(){saveProgress();handler.postDelayed(this,5000);}};
@@ -62,9 +63,9 @@ public class PlayerActivity extends Activity {
   root.addView(castButton,cp);
   castButton.setOnClickListener(v->showCastDevices());
   castListener=new SessionManagerListener<CastSession>(){
-   @Override public void onSessionStarted(CastSession session,String id){sendToTv(session);}
-   @Override public void onSessionResumed(CastSession session,boolean wasSuspended){casting=true;pauseLocal();}
-   @Override public void onSessionEnded(CastSession session,int error){casting=false;}
+   @Override public void onSessionStarted(CastSession session,String id){sendToTv(session);handler.postDelayed(()->showTvControls(),650);}
+   @Override public void onSessionResumed(CastSession session,boolean wasSuspended){casting=true;pauseLocal();handler.post(()->showTvControls());}
+   @Override public void onSessionEnded(CastSession session,int error){casting=false;if(tvDialog!=null){tvDialog.dismiss();tvDialog=null;}Toast.makeText(PlayerActivity.this,"TV desconectada",Toast.LENGTH_SHORT).show();}
    @Override public void onSessionStarting(CastSession session){}
    @Override public void onSessionStartFailed(CastSession session,int error){Toast.makeText(PlayerActivity.this,"Não foi possível conectar à TV",Toast.LENGTH_SHORT).show();}
    @Override public void onSessionEnding(CastSession session){}
@@ -80,6 +81,10 @@ public class PlayerActivity extends Activity {
  if(b!=null){savedPosition=b.getLong("position",0);playWhenReady=b.getBoolean("playing",true);restored=true;playlistIndex=b.getInt("playlistIndex",playlistIndex);url=b.getString("url",url);}
  }
  private void showCastDevices(){
+  if(castContext!=null){
+   CastSession current=castContext.getSessionManager().getCurrentCastSession();
+   if(current!=null&&current.isConnected()){showTvControls();return;}
+  }
   if(castContext==null){new AlertDialog.Builder(this).setTitle("Google Cast")
    .setMessage("Não foi possível iniciar o Google Cast. "+castError).setPositiveButton("OK",null).show();return;}
   try{
@@ -108,6 +113,42 @@ public class PlayerActivity extends Activity {
     .setMessage("Erro ao procurar aparelhos: "+e.getClass().getSimpleName()+": "+e.getMessage())
     .setPositiveButton("OK",null).show();
   }
+ }
+ private void showTvControls(){
+  if(isFinishing()||castContext==null)return;
+  CastSession session=castContext.getSessionManager().getCurrentCastSession();
+  if(session==null||!session.isConnected())return;
+  if(tvDialog!=null&&tvDialog.isShowing())return;
+  String device="Televisão";
+  try{if(session.getCastDevice()!=null)device=session.getCastDevice().getFriendlyName();}catch(Exception ignored){}
+  final String tvName=device;
+  LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);
+  int pad=(int)(18*getResources().getDisplayMetrics().density);
+  layout.setPadding(pad,pad,pad,pad);
+  TextView status=new TextView(this);status.setText("📺 "+tvName+"\nConectado ao Google Cast\n\n"+displayName);
+  status.setTextSize(17);layout.addView(status);
+  LinearLayout controls=new LinearLayout(this);controls.setGravity(Gravity.CENTER);
+  Button back=new Button(this);back.setText("-10s");controls.addView(back);
+  Button play=new Button(this);play.setText("Pausar / Continuar");controls.addView(play);
+  Button next=new Button(this);next.setText("+10s");controls.addView(next);
+  layout.addView(controls);
+  back.setOnClickListener(v->{RemoteMediaClient r=session.getRemoteMediaClient();if(r!=null)r.seek(Math.max(0,r.getApproximateStreamPosition()-10000));});
+  next.setOnClickListener(v->{RemoteMediaClient r=session.getRemoteMediaClient();if(r!=null)r.seek(r.getApproximateStreamPosition()+10000);});
+  play.setOnClickListener(v->{RemoteMediaClient r=session.getRemoteMediaClient();if(r!=null){if(r.isPlaying())r.pause();else r.play();}});
+  tvDialog=new AlertDialog.Builder(this).setTitle("Controle da TV")
+   .setView(layout)
+   .setNegativeButton("Fechar tela",(d,w)->{})
+   .setNeutralButton("Desconectar",(d,w)->new AlertDialog.Builder(this)
+    .setTitle("Desconectar da TV?")
+    .setMessage("A transmissão será encerrada em "+tvName+".")
+    .setNegativeButton("Cancelar",(a,b)->handler.post(()->showTvControls()))
+    .setPositiveButton("Desconectar",(a,b)->{
+     try{castContext.getSessionManager().endCurrentSession(true);casting=false;}
+     catch(Exception e){Toast.makeText(this,"Erro ao desconectar: "+e.getMessage(),Toast.LENGTH_LONG).show();}
+    }).show())
+   .create();
+  tvDialog.setOnDismissListener(d->tvDialog=null);
+  tvDialog.show();
  }
  private void pauseLocal(){if(player!=null){saveProgress();player.pause();}}
  private void sendToTv(CastSession session){
