@@ -5,6 +5,8 @@ import android.os.*;
 import android.content.*;
 import android.net.Uri;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
+import javax.net.ssl.SSLException;
 import android.view.*;
 import android.widget.*;
 import com.google.firebase.auth.FirebaseAuth;
@@ -21,29 +23,47 @@ public class AdminActivity extends Activity {
  private LinearLayout root;private TextView status;private boolean authorized=false,busy=false;
  private LocalCatalog catalog;
  @Override public void onCreate(Bundle b){super.onCreate(b);catalog=new LocalCatalog(this);login();}
- private void screen(String title){ScrollView scroll=new ScrollView(this);scroll.setBackgroundColor(0xff0b101b);root=new LinearLayout(this);root.setPadding(24,28,24,36);root.setOrientation(1);scroll.addView(root);setContentView(scroll);TextView h=new TextView(this);h.setText("REEL SÉRIES • ADMIN\n"+title);h.setTextSize(24);h.setTextColor(0xffff4564);root.addView(h);status=new TextView(this);status.setTextColor(Color.WHITE);status.setPadding(0,20,0,20);root.addView(status);}
- private EditText field(String hint){EditText e=new EditText(this);e.setHint(hint);e.setTextColor(-1);e.setHintTextColor(0xffaaaaaa);root.addView(e);return e;}
- private void button(String label,Runnable action){Button b=new Button(this);b.setText(label);b.setAllCaps(false);root.addView(b);b.setOnClickListener(v->action.run());}
+ private int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+0.5f);}
+ private GradientDrawable shape(int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
+ private void screen(String title){
+  ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xff0b101b);
+  root=new LinearLayout(this);root.setPadding(dp(18),dp(22),dp(18),dp(36));root.setOrientation(1);scroll.addView(root);setContentView(scroll);
+  TextView brand=new TextView(this);brand.setText("▣  REEL SÉRIES  /  ADMIN");brand.setTextColor(0xfffb536c);brand.setTextSize(14);brand.setTypeface(null,1);root.addView(brand);
+  TextView h=new TextView(this);h.setText(title);h.setTextSize(27);h.setTypeface(null,1);h.setTextColor(Color.WHITE);h.setPadding(0,dp(8),0,dp(14));root.addView(h);
+  status=new TextView(this);status.setTextColor(0xffc9d3e3);status.setTextSize(14);status.setPadding(dp(14),dp(13),dp(14),dp(13));status.setBackground(shape(0xff192438,14));root.addView(status);
+ }
+ private EditText field(String hint){EditText e=new EditText(this);e.setHint(hint);e.setTextColor(-1);e.setHintTextColor(0xff99a5ba);e.setTextSize(15);e.setSingleLine(false);e.setPadding(dp(14),dp(12),dp(14),dp(12));e.setBackground(shape(0xff1b273a,12));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(10);root.addView(e,lp);return e;}
+ private void button(String label,Runnable action){TextView b=new TextView(this);b.setText(label);b.setTextSize(15);b.setTypeface(null,1);b.setTextColor(Color.WHITE);b.setGravity(Gravity.CENTER_VERTICAL);b.setPadding(dp(17),dp(15),dp(12),dp(15));b.setMinHeight(dp(54));b.setBackground(shape(0xff202d42,13));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(9);root.addView(b,lp);b.setOnClickListener(v->action.run());}
+ private void section(String title){TextView t=new TextView(this);t.setText(title.toUpperCase(java.util.Locale.ROOT));t.setTextSize(13);t.setTypeface(null,1);t.setTextColor(0xffff627a);t.setPadding(0,dp(23),0,dp(5));root.addView(t);}
  private void msg(String s){runOnUiThread(()->{if(!isFinishing()&&status!=null)status.setText(s);});}
  private void login(){authorized=false;screen("Acesso protegido");if(auth.getCurrentUser()!=null){verify();return;}EditText email=field("E-mail"),pass=field("Senha");pass.setInputType(129);button("Entrar",()->{msg("Autenticando...");auth.signInWithEmailAndPassword(email.getText().toString().trim(),pass.getText().toString()).addOnSuccessListener(x->verify()).addOnFailureListener(e->msg(e.getMessage()));});}
  private void verify(){if(auth.getCurrentUser()==null){login();return;}msg("Verificando administrador...");firestore.collection("admins").document(auth.getCurrentUser().getUid()).get().addOnSuccessListener(d->{if(d.exists()&&Boolean.TRUE.equals(d.getBoolean("active"))&&"admin".equals(d.getString("role"))){authorized=true;dashboard();seedBundledCatalog();}else{msg("Conta sem autorização.");button("Trocar conta",()->{auth.signOut();login();});}}).addOnFailureListener(e->msg("Erro de autorização: "+e.getMessage()));}
  private TextView panelText(String text,int size){TextView t=new TextView(this);t.setText(text);t.setTextColor(-1);t.setTextSize(size);t.setPadding(18,15,18,15);return t;}
- private void dashboard(){if(!authorized){login();return;}screen("PAINEL PREMIUM V13");msg("Banco interno SQLite • Firebase somente para acesso administrativo");
- LinearLayout stats=new LinearLayout(this);stats.setOrientation(0);root.addView(stats);TextView total=panelText("REGISTROS LOCAIS\n"+catalog.count(),20);total.setBackgroundColor(0xff192233);stats.addView(total,new LinearLayout.LayoutParams(0,-2,1));TextView apk=panelText("FONTE\nAndroid",18);apk.setBackgroundColor(0xff192233);LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,-2,1);ap.leftMargin=10;stats.addView(apk,ap);
- button("＋ Adicionar filme, série ou canal",this::manual);
- button("⇧ Importar arquivo JSON",()->pick(JSON));button("⇧ Importar arquivo M3U",()->pick(M3U));
- button("🔗 Adicionar link M3U (playlist)",()->urlDialog(false));button("▶ Adicionar link M3U8 (stream)",()->urlDialog(true));
- button("↻ Atualizar lista IPTV por URL",()->urlDialog(false));
- button("⌕ Ver todos os títulos e gerenciar",()->browseTitles(0));
- button("⌕ Pesquisar e gerenciar títulos",this::manageTitles);
- button("◉ Estatísticas avançadas",this::statistics);
- button("⚠ Diagnóstico: sem vídeo",()->diagnostic("sem_video",0));
- button("▧ Diagnóstico: sem capa",()->diagnostic("sem_capa",0));
- button("≡ Diagnóstico: categorias vazias",()->diagnostic("sem_categoria",0));
- button("⇩ Exportar backup JSON do catálogo",this::exportCatalog);
- button("↻ Atualizar painel",this::dashboard);
- button("♟ Gerenciar acesso do administrador",()->msg("O acesso é validado em admins/{uid} no Firebase. Gerenciamento de outros usuários requer regras e telas próprias."));
- button("Sair da conta",()->{auth.signOut();login();});}
+ private void dashboard(){if(!authorized){login();return;}screen("Central administrativa V19");msg("Catálogo local SQLite • Acesso protegido pelo Firebase");
+  LinearLayout stats=new LinearLayout(this);stats.setOrientation(0);LinearLayout.LayoutParams stlp=new LinearLayout.LayoutParams(-1,-2);stlp.topMargin=dp(15);root.addView(stats,stlp);
+  TextView total=panelText("REGISTROS LOCAIS\n"+catalog.count(),19);total.setBackground(shape(0xff1c2b40,15));stats.addView(total,new LinearLayout.LayoutParams(0,-2,1));
+  TextView apk=panelText("ARMAZENAMENTO\nNeste celular",16);apk.setBackground(shape(0xff1c2b40,15));LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,-2,1);ap.leftMargin=dp(10);stats.addView(apk,ap);
+  section("Importação e playlists");
+  button("🔗  Importar playlist M3U por link",()->urlDialog(false));
+  button("⇧  Importar arquivo M3U",()->pick(M3U));
+  button("⇧  Importar arquivo JSON",()->pick(JSON));
+  button("▶  Adicionar transmissão M3U8",()->urlDialog(true));
+  button("↻  Atualizar playlist por URL",()->urlDialog(false));
+  section("Gerenciar catálogo");
+  button("＋  Adicionar filme, série ou canal",this::manual);
+  button("⌕  Pesquisar e editar títulos",this::manageTitles);
+  button("▦  Ver todos os títulos",()->browseTitles(0));
+  section("Estatísticas e diagnóstico");
+  button("◉  Estatísticas do catálogo",this::statistics);
+  button("⚠  Títulos sem vídeo",()->diagnostic("sem_video",0));
+  button("▧  Títulos sem capa",()->diagnostic("sem_capa",0));
+  button("≡  Categorias vazias",()->diagnostic("sem_categoria",0));
+  section("Configurações e segurança");
+  button("⇩  Exportar backup JSON",this::exportCatalog);
+  button("↻  Atualizar painel",this::dashboard);
+  button("♟  Permissões administrativas",()->new AlertDialog.Builder(this).setTitle("Segurança do administrador").setMessage("O acesso é validado no Firebase Firestore em admins/{uid}, com active=true e role=admin. Para gerenciar outros administradores são necessárias regras seguras no servidor.").setPositiveButton("Entendi",null).show());
+  button("Sair da conta",()->{auth.signOut();login();});
+ }
  private void seedBundledCatalog(){
   worker.execute(()->{
    try{
@@ -88,7 +108,34 @@ public class AdminActivity extends Activity {
  private void importFile(Uri uri,int type){if(busy||!authorized)return;busy=true;msg("Importando para SQLite local...");worker.execute(()->{try(InputStream in=getContentResolver().openInputStream(uri)){if(in==null)throw new IOException("Arquivo não disponível");int n=type==JSON?catalog.importJson(in,c->msg("JSON: "+c+" registros locais...")):catalog.importM3u(in,"arquivo:"+uri.toString(),c->msg("M3U: "+c+" canais locais..."));msg("Importação concluída: "+n+" registros. Volte à tela principal para visualizar.");}catch(Exception e){msg("Falha na importação: "+e.getMessage());}finally{busy=false;}});}
  private void urlDialog(boolean stream){EditText input=new EditText(this);input.setSingleLine(false);input.setHint(stream?"https://servidor/canal.m3u8":"https://servidor/lista.m3u");new AlertDialog.Builder(this).setTitle(stream?"Adicionar stream M3U8":"Importar playlist M3U").setView(input).setNegativeButton("Cancelar",null).setPositiveButton("Continuar",(d,w)->{String url=input.getText().toString().trim();if(!url.startsWith("https://")&&!url.startsWith("http://")){msg("Use uma URL HTTP ou HTTPS válida.");return;}if(stream)streamName(url);else importUrl(url);}).show();}
  private void streamName(String url){EditText name=new EditText(this);name.setHint("Nome do canal");new AlertDialog.Builder(this).setTitle("Nome do stream").setView(name).setNegativeButton("Cancelar",null).setPositiveButton("Salvar",(d,w)->{String n=name.getText().toString().trim();if(n.isEmpty())n="Canal ao vivo";catalog.addStream(n,url);msg("Stream salvo localmente: "+n);}).show();}
- private void importUrl(String url){if(busy)return;busy=true;msg("Baixando lista M3U...");worker.execute(()->{HttpURLConnection c=null;try{URL u=new URL(url);if(!u.getProtocol().equals("http")&&!u.getProtocol().equals("https"))throw new IOException("Protocolo inválido");c=(HttpURLConnection)u.openConnection();c.setConnectTimeout(12000);c.setReadTimeout(20000);c.setInstanceFollowRedirects(true);int code=c.getResponseCode();if(code<200||code>=300)throw new IOException("Servidor retornou HTTP "+code);try(InputStream in=c.getInputStream()){int n=catalog.importM3u(in,url,count->msg("Lista: "+count+" registros salvos..."));msg("Lista importada no celular: "+n+" registros.");}}catch(Exception e){msg("Erro ao importar URL: "+e.getMessage());}finally{if(c!=null)c.disconnect();busy=false;}});}
+ private String explainNetworkError(Exception e,String url){
+  String detail=e.getMessage()==null?e.getClass().getSimpleName():e.getMessage();
+  if(e instanceof SSLException || detail.toLowerCase(java.util.Locale.ROOT).contains("tls") || detail.toLowerCase(java.util.Locale.ROOT).contains("ssl"))
+   return "Falha na conexão segura (TLS/HTTPS). O servidor pode não aceitar HTTPS nesta porta ou ter configuração TLS incorreta. Confirme com o fornecedor o endereço e o protocolo corretos (HTTP ou HTTPS). Não é seguro ignorar a validação do certificado. Detalhe: "+detail;
+  if(e instanceof java.net.UnknownHostException)return "Servidor não encontrado. Confira o endereço da playlist e a conexão com a internet. Detalhe: "+detail;
+  if(e instanceof java.net.SocketTimeoutException)return "O servidor demorou para responder. Tente novamente ou consulte o fornecedor. Detalhe: "+detail;
+  if(e instanceof java.net.ConnectException)return "Não foi possível conectar ao servidor. Verifique endereço, porta e disponibilidade. Detalhe: "+detail;
+  return "Falha ao importar playlist: "+detail;
+ }
+ private void importUrl(String url){
+  if(busy||!authorized){msg("Aguarde a operação atual ou entre como administrador.");return;}
+  busy=true;msg("Conectando à playlist M3U...");
+  worker.execute(()->{HttpURLConnection c=null;
+   try{
+    URL u=new URL(url);String protocol=u.getProtocol().toLowerCase(java.util.Locale.ROOT);
+    if(!protocol.equals("http")&&!protocol.equals("https"))throw new IOException("Use HTTP ou HTTPS.");
+    c=(HttpURLConnection)u.openConnection();c.setConnectTimeout(15000);c.setReadTimeout(30000);c.setInstanceFollowRedirects(true);
+    c.setRequestProperty("User-Agent","ReelSeries-Android/19");c.setRequestProperty("Accept","application/x-mpegURL, application/vnd.apple.mpegurl, audio/x-mpegurl, text/plain, */*");
+    int code=c.getResponseCode();if(code<200||code>=300)throw new IOException("Servidor retornou HTTP "+code);
+    String type=c.getContentType();msg("Conexão estabelecida. Importando playlist"+(type==null?"":" ("+type+")")+"...");
+    try(InputStream in=c.getInputStream()){
+     int n=catalog.importM3u(in,url,count->msg("Importando M3U: "+count+" registros..."));
+     msg("Importação concluída: "+n+" registros no armazenamento local. Volte ao catálogo para visualizar.");
+    }
+   }catch(Exception e){msg(explainNetworkError(e,url));}
+   finally{if(c!=null)c.disconnect();busy=false;}
+  });
+ }
  private void manual(){screen("Adicionar conteúdo local");EditText id=field("Nome do filme ou canal"),cat=field("Categoria"),cover=field("URL da capa"),url=field("URL do vídeo MP4/M3U8"),syn=field("Sinopse");button("Salvar no celular",()->{String name=id.getText().toString().trim();if(name.isEmpty()){msg("Informe o nome");return;}String link=url.getText().toString().trim();catalog.save(catalog.getWritableDatabase(),"manual_"+LocalCatalog.hash(name+"|"+link),name,cat.getText().toString(),cover.getText().toString(),link,syn.getText().toString(),"","manual");msg("Salvo no armazenamento interno.");});button("Voltar",this::dashboard);}
  @Override public void onBackPressed(){if(authorized)dashboard();else super.onBackPressed();}
  @Override protected void onDestroy(){worker.shutdownNow();catalog.close();super.onDestroy();}
