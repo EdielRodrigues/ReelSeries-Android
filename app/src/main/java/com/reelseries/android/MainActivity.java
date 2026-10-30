@@ -5,7 +5,7 @@ import android.app.*;import android.os.*;import android.content.*;import android
 public class MainActivity extends Activity {
  final ArrayList<JSONObject> all=new ArrayList<>(), shown=new ArrayList<>(); final java.util.HashMap<String,JSONObject> cloud=new java.util.HashMap<>();
  final ExecutorService pool=Executors.newFixedThreadPool(3); final android.util.LruCache<String,Bitmap> cache=new android.util.LruCache<String,Bitmap>(16);
- GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos"; int pageOffset=0; boolean loadingPage=false, endReached=false; TextView moreButton; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
+ GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos"; int pageOffset=0; boolean loadingPage=false, endReached=false, bundledPaging=false; TextView moreButton; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
  int bg=Color.rgb(12,16,27), fg=Color.WHITE; final ArrayList<String> catNames=new ArrayList<>();
  int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(bg);getWindow().setNavigationBarColor(Color.BLACK);
@@ -52,22 +52,34 @@ public class MainActivity extends Activity {
  TextView actionText(String value,boolean primary){TextView v=navText(value,14);v.setGravity(Gravity.CENTER);v.setTypeface(null,1);v.setTextColor(primary?0xff11151d:Color.WHITE);android.graphics.drawable.GradientDrawable bg=new android.graphics.drawable.GradientDrawable();bg.setColor(primary?Color.WHITE:0xff30333c);bg.setCornerRadius(dp(12));v.setBackground(bg);return v;}
  void chooseCategory(String q){mode=q;selected="Todas";if(categories!=null&&categories.getSelectedItemPosition()!=0)categories.setSelection(0);resetFeed();}
  void loadCloud(){resetFeed();}
- void resetFeed(){if(search==null||grid==null||adapter==null)return;requestVersion++;pageOffset=0;endReached=false;loadingPage=false;localPages.clear();shown.clear();adapter.notifyDataSetChanged();updateGridHeight();loadNextPage();}
+ void resetFeed(){if(search==null||grid==null||adapter==null)return;requestVersion++;pageOffset=0;endReached=false;loadingPage=false;bundledPaging=false;localPages.clear();shown.clear();adapter.notifyDataSetChanged();updateGridHeight();loadNextPage();}
  boolean matches(JSONObject o,String query){String name=o.optString("nome","");String cat=o.optString("categoria","");String c=cat.toLowerCase(java.util.Locale.ROOT);String n=name.toLowerCase(java.util.Locale.ROOT);if(!n.contains(query))return false;if(!selected.equals("Todas")&&!selected.equals(cat))return false;boolean tv=c.contains("iptv")||c.contains("canal")||c.contains("tv ao vivo")||c.equals("tv")||c.contains("televis");boolean series=SeriesHelper.isSeries(o);if(mode.equals("TV / IPTV"))return tv;if(mode.equals("Séries"))return series&&!tv;if(mode.equals("Filmes"))return !tv&&!series&&(c.contains("filme")||c.contains("movie")||c.contains("cinema"));return true;}
  void loadNextPage(){
   if(loadingPage||endReached||pool.isShutdown())return;
   if(mode.equals("Séries") && !all.isEmpty()){loadSeriesPage();return;}
   loadingPage=true;final int version=requestVersion,offset=pageOffset;
   final String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim(),m=mode,cat=selected;
-  moreButton.setText("CARREGANDO TÍTULOS...");
+  moreButton.setVisibility(View.VISIBLE);moreButton.setText("CARREGANDO TÍTULOS...");
   pool.execute(()->{
-   try(LocalCatalog db=new LocalCatalog(this)){
-    ArrayList<JSONObject> page=db.feed(q,m,cat,offset,60);
-    final int count=page.size();
+   try{
+    ArrayList<JSONObject> page=new ArrayList<>();boolean useBundled=bundledPaging;
+    if(!useBundled){try(LocalCatalog db=new LocalCatalog(this)){page=db.feed(q,m,cat,offset,60);}
+     if(offset==0 && page.isEmpty() && !all.isEmpty())useBundled=true;}
+    boolean hasMore;
+    if(useBundled){
+     page.clear();int found=0;
+     for(JSONObject item:all){if(!matches(item,q))continue;
+      if(found++<offset)continue;
+      if(page.size()<60)page.add(item);else break;
+     }
+     hasMore=found>offset+page.size();
+    }else hasMore=page.size()==60;
+    final ArrayList<JSONObject> result=page;final boolean next=hasMore,fromBundled=useBundled;
     runOnUiThread(()->{if(version!=requestVersion)return;
-     pageOffset=offset+count;localPages.clear();localPages.addAll(page);endReached=count<60;loadingPage=false;
-     filter();moreButton.setVisibility(endReached?View.GONE:View.VISIBLE);
-     moreButton.setText("PRÓXIMOS 60 TÍTULOS  ↓");
+     bundledPaging=fromBundled;pageOffset=offset+result.size();localPages.addAll(result);
+     endReached=!next;loadingPage=false;filter();
+     moreButton.setVisibility(endReached?View.GONE:View.VISIBLE);
+     moreButton.setText("CARREGAR MAIS 60 TÍTULOS  ↓");
     });
    }catch(Exception ex){runOnUiThread(()->{if(version==requestVersion){loadingPage=false;status.setText("Erro: "+ex.getMessage());moreButton.setText("TENTAR NOVAMENTE");}});}
   });
@@ -89,7 +101,7 @@ public class MainActivity extends Activity {
    }
    final boolean hasMore=skipped>offset+page.size();
    runOnUiThread(()->{if(version!=requestVersion)return;
-    localPages.clear();localPages.addAll(page);pageOffset=offset+page.size();
+    localPages.addAll(page);pageOffset=offset+page.size();
     endReached=!hasMore;loadingPage=false;filter();
     moreButton.setVisibility(endReached?View.GONE:View.VISIBLE);
     moreButton.setText("PRÓXIMAS 60 SÉRIES  ↓");
@@ -97,8 +109,14 @@ public class MainActivity extends Activity {
   });
  }
  void refreshLocal(){resetFeed();}
- void filter(){if(adapter==null)return;String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim();shown.clear();java.util.HashSet<String> ids=new java.util.HashSet<>(),grouped=new java.util.HashSet<>();ArrayList<JSONObject> combined=new ArrayList<>(localPages);if(combined.isEmpty() && pageOffset==0){int added=0;for(JSONObject fallback:all){if(matches(fallback,q)){combined.add(fallback);if(++added>=60)break;}}}for(JSONObject o:combined){if(!matches(o,q))continue;String id=o.optString("id","");if(!id.isEmpty()&&!ids.add(id))continue;if(SeriesHelper.isSeries(o)){String k=SeriesHelper.key(o);if(!grouped.add(k))continue;}shown.add(o);}status.setText(shown.size()+" nesta página • "+all.size()+" no APK • "+pageOffset+" registros locais consultados");adapter.notifyDataSetChanged();updateGridHeight();}
- void updateGridHeight(){/* GridView com altura fixa: recicla cartões e carrega capas somente quando visíveis. */}
+ void filter(){if(adapter==null)return;String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim();shown.clear();java.util.HashSet<String> ids=new java.util.HashSet<>(),grouped=new java.util.HashSet<>();ArrayList<JSONObject> combined=new ArrayList<>(localPages);if(combined.isEmpty() && pageOffset==0){int added=0;for(JSONObject fallback:all){if(matches(fallback,q)){combined.add(fallback);if(++added>=60)break;}}}for(JSONObject o:combined){if(!matches(o,q))continue;String id=o.optString("id","");if(!id.isEmpty()&&!ids.add(id))continue;if(SeriesHelper.isSeries(o)){String k=SeriesHelper.key(o);if(!grouped.add(k))continue;}shown.add(o);}status.setText(shown.size()+" títulos exibidos • "+all.size()+" no APK");adapter.notifyDataSetChanged();updateGridHeight();}
+ void updateGridHeight(){
+  if(grid==null)return;
+  int rows=Math.max(1,(shown.size()+2)/3);
+  int height=dp(10)+rows*dp(215)+Math.max(0,rows-1)*dp(12)+dp(12);
+  android.view.ViewGroup.LayoutParams params=grid.getLayoutParams();
+  if(params!=null&&params.height!=height){params.height=height;grid.setLayoutParams(params);}
+ }
  @Override protected void onResume(){super.onResume();if(search!=null)resetFeed();}
  void details(JSONObject o){Intent i=new Intent(this,DetailsActivity.class);i.putExtra("item",o.toString());startActivity(i);}
  void loadCover(String url,ImageView image){if(url.equals(image.getTag()) && image.getDrawable()!=null)return;image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag()))image.setImageBitmap(bitmap);});}}catch(Exception ignored){}});}
