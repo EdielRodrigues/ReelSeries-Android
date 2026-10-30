@@ -9,7 +9,10 @@ import com.google.android.gms.cast.framework.CastSession;
 import com.google.android.gms.cast.framework.SessionManagerListener;
 import com.google.android.gms.cast.framework.media.RemoteMediaClient;
 import com.google.android.gms.cast.MediaLoadOptions;
-import androidx.mediarouter.app.MediaRouteButton;
+import androidx.mediarouter.media.MediaRouter;
+import androidx.mediarouter.media.MediaRouteSelector;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import org.json.*;import java.security.MessageDigest;import java.nio.charset.StandardCharsets;
 public class PlayerActivity extends Activity {
  private ExoPlayer player;private PlayerView playerView;private long savedPosition=0;private String url;private boolean playWhenReady=true;
@@ -17,6 +20,8 @@ public class PlayerActivity extends Activity {
  private String castError="";
  private SessionManagerListener<CastSession> castListener;
  private boolean casting=false;
+ private MediaRouter mediaRouter;
+ private MediaRouter.Callback routeCallback;
  private String displayName="";
  private JSONArray playlist;private int playlistIndex=-1;private boolean restored=false;
  private final Handler handler=new Handler(Looper.getMainLooper());
@@ -32,15 +37,30 @@ public class PlayerActivity extends Activity {
  url=getIntent().getStringExtra("url");if(url==null||!url.startsWith("http")){finish();return;}
  try{String raw=getIntent().getStringExtra("playlist");if(raw!=null){playlist=new JSONArray(raw);playlistIndex=getIntent().getIntExtra("playlistIndex",-1);}}catch(Exception ignored){playlist=null;}
  FrameLayout root=new FrameLayout(this);root.setBackgroundColor(0xff000000);playerView=new PlayerView(this);playerView.setUseController(true);playerView.setControllerShowTimeoutMs(4500);playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);root.addView(playerView,new FrameLayout.LayoutParams(-1,-1));setContentView(root);
- // O botão é integrado à seleção de dispositivos Google Cast na mesma rede.
+ // Botão Cast próprio: não usa o diálogo de MediaRouteButton que fechava a Activity.
  try{
   castContext=CastContext.getSharedInstance(this);
-  MediaRouteButton castButton=new MediaRouteButton(this);
+  View castButton=new View(this){
+   private final Paint paint=new Paint(3);
+   @Override protected void onDraw(Canvas canvas){
+    super.onDraw(canvas);
+    float d=getResources().getDisplayMetrics().density;
+    float x=(getWidth()-26*d)/2f,y=(getHeight()-23*d)/2f;
+    paint.setColor(0xffffffff);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(2.4f*d);
+    canvas.drawLine(x+2*d,y+3*d,x+24*d,y+3*d,paint);
+    canvas.drawLine(x+24*d,y+3*d,x+24*d,y+19*d,paint);
+    canvas.drawLine(x+2*d,y+3*d,x+2*d,y+9*d,paint);
+    canvas.drawArc(x-7*d,y+13*d,x+7*d,y+27*d,270,90,false,paint);
+    canvas.drawArc(x-2*d,y+18*d,x+5*d,y+25*d,270,90,false,paint);
+    paint.setStyle(Paint.Style.FILL);canvas.drawCircle(x+2*d,y+22*d,2*d,paint);
+   }
+  };
   castButton.setContentDescription("Transmitir para TV (Google Cast)");
+  castButton.setClickable(true);
   FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams((int)(58*getResources().getDisplayMetrics().density),(int)(58*getResources().getDisplayMetrics().density),Gravity.TOP|Gravity.END);
   cp.setMargins(0,(int)(18*getResources().getDisplayMetrics().density),(int)(16*getResources().getDisplayMetrics().density),0);
   root.addView(castButton,cp);
-  CastButtonFactory.setUpMediaRouteButton(getApplicationContext(),castButton);
+  castButton.setOnClickListener(v->showCastDevices());
   castListener=new SessionManagerListener<CastSession>(){
    @Override public void onSessionStarted(CastSession session,String id){sendToTv(session);}
    @Override public void onSessionResumed(CastSession session,boolean wasSuspended){casting=true;pauseLocal();}
@@ -53,22 +73,41 @@ public class PlayerActivity extends Activity {
    @Override public void onSessionSuspended(CastSession session,int reason){}
   };
  }catch(Exception e){
-   castError=e.getClass().getSimpleName()+": "+String.valueOf(e.getMessage());
-   android.util.Log.e("ReelSeriesCast","Falha ao inicializar Google Cast",e);
-   TextView castRetry=new TextView(this);
-   castRetry.setText("📺 Cast: verificar conexão");castRetry.setTextColor(0xffffffff);
-   castRetry.setTextSize(12);castRetry.setGravity(Gravity.CENTER);
-   castRetry.setBackgroundColor(0xaa222222);
-   FrameLayout.LayoutParams rp=new FrameLayout.LayoutParams((int)(185*getResources().getDisplayMetrics().density),(int)(48*getResources().getDisplayMetrics().density),Gravity.TOP|Gravity.END);
-   rp.setMargins(0,(int)(18*getResources().getDisplayMetrics().density),(int)(12*getResources().getDisplayMetrics().density),0);
-   root.addView(castRetry,rp);
-   castRetry.setOnClickListener(v->new AlertDialog.Builder(this)
-     .setTitle("Diagnóstico Google Cast")
-     .setMessage("Não foi possível inicializar o Google Cast.\n\nErro: "+castError+"\n\nVerifique se o Google Play Services está atualizado, se o Chromecast está ligado e se ambos estão na mesma rede Wi-Fi. Depois feche e abra o player novamente.")
-     .setPositiveButton("OK",null).show());
+  castError=e.getClass().getSimpleName()+": "+String.valueOf(e.getMessage());
+  android.util.Log.e("ReelSeriesCast","Falha ao inicializar Google Cast",e);
  }
 
  if(b!=null){savedPosition=b.getLong("position",0);playWhenReady=b.getBoolean("playing",true);restored=true;playlistIndex=b.getInt("playlistIndex",playlistIndex);url=b.getString("url",url);}
+ }
+ private void showCastDevices(){
+  if(castContext==null){new AlertDialog.Builder(this).setTitle("Google Cast")
+   .setMessage("Não foi possível iniciar o Google Cast. "+castError).setPositiveButton("OK",null).show();return;}
+  try{
+   MediaRouter router=MediaRouter.getInstance(this);
+   MediaRouteSelector selector=castContext.getMergedSelector();
+   java.util.ArrayList<MediaRouter.RouteInfo> routes=new java.util.ArrayList<>();
+   java.util.ArrayList<String> names=new java.util.ArrayList<>();
+   for(MediaRouter.RouteInfo route:router.getRoutes()){
+    if(route.isEnabled() && !route.isDefault() && route.matchesSelector(selector)){
+     routes.add(route);names.add(String.valueOf(route.getName()));
+    }
+   }
+   if(routes.isEmpty()){
+    new AlertDialog.Builder(this).setTitle("Google Cast")
+     .setMessage("Nenhum Chromecast encontrado. Confirme que o aparelho está ligado e conectado à mesma rede Wi-Fi. Aguarde alguns segundos e tente novamente.")
+     .setPositiveButton("OK",null).show();return;
+   }
+   new AlertDialog.Builder(this).setTitle("Transmitir para TV")
+    .setItems(names.toArray(new String[0]),(dialog,which)->{
+      try{routes.get(which).select();}
+      catch(Exception e){Toast.makeText(this,"Falha ao conectar: "+e.getMessage(),Toast.LENGTH_LONG).show();}
+    }).setNegativeButton("Cancelar",null).show();
+  }catch(Exception e){
+   android.util.Log.e("ReelSeriesCast","Falha ao listar aparelhos",e);
+   new AlertDialog.Builder(this).setTitle("Google Cast")
+    .setMessage("Erro ao procurar aparelhos: "+e.getClass().getSimpleName()+": "+e.getMessage())
+    .setPositiveButton("OK",null).show();
+  }
  }
  private void pauseLocal(){if(player!=null){saveProgress();player.pause();}}
  private void sendToTv(CastSession session){
@@ -84,7 +123,12 @@ public class PlayerActivity extends Activity {
   Toast.makeText(this,"Enviando para a TV",Toast.LENGTH_SHORT).show();
  }
  @Override protected void onStart(){super.onStart();
- if(castContext!=null&&castListener!=null){castContext.getSessionManager().addSessionManagerListener(castListener,CastSession.class);}
+ if(castContext!=null&&castListener!=null){
+  castContext.getSessionManager().addSessionManagerListener(castListener,CastSession.class);
+  try{mediaRouter=MediaRouter.getInstance(this);routeCallback=new MediaRouter.Callback(){};
+   mediaRouter.addCallback(castContext.getMergedSelector(),routeCallback,MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY);
+  }catch(Exception e){android.util.Log.e("ReelSeriesCast","Erro na busca",e);}
+ }
 player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);
  player.addListener(new Player.Listener(){
   @Override public void onPlayerError(PlaybackException e){if(!isFinishing())new AlertDialog.Builder(PlayerActivity.this).setTitle("Não foi possível reproduzir").setMessage("O servidor ou o formato do vídeo pode estar indisponível.\n\n"+e.getErrorCodeName()).setPositiveButton("Voltar",(d,w)->finish()).show();}
@@ -99,6 +143,6 @@ player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);
   player.setMediaItem(MediaItem.fromUri(url));player.prepare();player.seekTo(savedPosition);player.setPlayWhenReady(true);
   Toast.makeText(this,"Próximo: "+o.optString("name","Episódio "+(next+1)),Toast.LENGTH_SHORT).show();
  }
- @Override protected void onStop(){if(castContext!=null&&castListener!=null)castContext.getSessionManager().removeSessionManagerListener(castListener,CastSession.class);handler.removeCallbacks(periodic);if(player!=null){saveProgress();savedPosition=player.getCurrentPosition();playWhenReady=player.getPlayWhenReady();restored=true;playerView.setPlayer(null);player.release();player=null;}super.onStop();}
+ @Override protected void onStop(){if(mediaRouter!=null&&routeCallback!=null){mediaRouter.removeCallback(routeCallback);routeCallback=null;}if(castContext!=null&&castListener!=null)castContext.getSessionManager().removeSessionManagerListener(castListener,CastSession.class);handler.removeCallbacks(periodic);if(player!=null){saveProgress();savedPosition=player.getCurrentPosition();playWhenReady=player.getPlayWhenReady();restored=true;playerView.setPlayer(null);player.release();player=null;}super.onStop();}
  @Override protected void onSaveInstanceState(Bundle b){b.putLong("position",player!=null?player.getCurrentPosition():savedPosition);b.putBoolean("playing",player!=null?player.getPlayWhenReady():playWhenReady);b.putInt("playlistIndex",playlistIndex);b.putString("url",url);super.onSaveInstanceState(b);}
 }
