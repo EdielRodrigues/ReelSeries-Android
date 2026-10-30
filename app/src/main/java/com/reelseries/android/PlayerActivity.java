@@ -28,20 +28,34 @@ public class PlayerActivity extends Activity {
  private RemoteMediaClient observedRemote;
  private boolean changingCastEpisode=false;
  private boolean loadingNextCast=false;
+ private boolean remoteWasPlaying=false;
+ private int lastAdvancedIndex=-1;
+ private TextView castStateLabel;
+ private View castIcon;
+ private void updateCastState(){
+  if(castContext==null)return;
+  CastSession active=castContext.getSessionManager().getCurrentCastSession();
+  boolean connected=active!=null&&active.isConnected();
+  casting=connected;
+  if(castStateLabel!=null){castStateLabel.setText(connected?"● Conectado":"");castStateLabel.setVisibility(connected?View.VISIBLE:View.GONE);}
+  if(castIcon!=null)castIcon.invalidate();
+ }
  private final RemoteMediaClient.Callback castPlaybackCallback=new RemoteMediaClient.Callback(){
   @Override public void onStatusUpdated(){
    if(observedRemote==null||!casting||changingCastEpisode||loadingNextCast)return;
    MediaStatus status=observedRemote.getMediaStatus();
-   if(status!=null && status.getPlayerState()==MediaStatus.PLAYER_STATE_IDLE
-      && status.getIdleReason()==MediaStatus.IDLE_REASON_FINISHED){
+   if(status==null)return;
+   if(status.getPlayerState()==MediaStatus.PLAYER_STATE_PLAYING){remoteWasPlaying=true;return;}
+   if(status.getPlayerState()==MediaStatus.PLAYER_STATE_IDLE &&
+      status.getIdleReason()==MediaStatus.IDLE_REASON_FINISHED && remoteWasPlaying &&
+      playlist!=null && playlistIndex>=0 && playlistIndex!=lastAdvancedIndex){
+    lastAdvancedIndex=playlistIndex;
+    remoteWasPlaying=false;
     loadingNextCast=true;
     handler.post(()->{
-     if(!casting){loadingNextCast=false;return;}
-     markComplete();
-     boolean hasNext=playlist!=null && playlistIndex>=0 && playlistIndex+1<playlist.length();
-     if(hasNext)playNext();
-     else Toast.makeText(PlayerActivity.this,"Fim dos episódios disponíveis",Toast.LENGTH_SHORT).show();
-     loadingNextCast=false;
+     try{
+      if(casting){markComplete();playNext();}
+     }finally{handler.postDelayed(()->loadingNextCast=false,1200);}
     });
    }
   }
@@ -68,31 +82,40 @@ public class PlayerActivity extends Activity {
    @Override protected void onDraw(Canvas canvas){
     super.onDraw(canvas);
     float d=getResources().getDisplayMetrics().density;
-    float x=(getWidth()-26*d)/2f,y=(getHeight()-23*d)/2f;
-    paint.setColor(0xffffffff);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(2.4f*d);
-    canvas.drawLine(x+2*d,y+3*d,x+24*d,y+3*d,paint);
-    canvas.drawLine(x+24*d,y+3*d,x+24*d,y+19*d,paint);
-    canvas.drawLine(x+2*d,y+3*d,x+2*d,y+9*d,paint);
-    canvas.drawArc(x-7*d,y+13*d,x+7*d,y+27*d,270,90,false,paint);
-    canvas.drawArc(x-2*d,y+18*d,x+5*d,y+25*d,270,90,false,paint);
-    paint.setStyle(Paint.Style.FILL);canvas.drawCircle(x+2*d,y+22*d,2*d,paint);
+    float scale=Math.min(getWidth()/(48f*d),getHeight()/(48f*d));
+    float x=getWidth()/2f-12*d*scale,y=getHeight()/2f-11*d*scale;
+    paint.setColor(casting?0xff48dca5:0xffffffff);
+    paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(2.2f*d*scale);
+    canvas.drawLine(x+3*d*scale,y+2*d*scale,x+23*d*scale,y+2*d*scale,paint);
+    canvas.drawLine(x+23*d*scale,y+2*d*scale,x+23*d*scale,y+20*d*scale,paint);
+    canvas.drawLine(x+3*d*scale,y+2*d*scale,x+3*d*scale,y+8*d*scale,paint);
+    canvas.drawArc(x-5*d*scale,y+11*d*scale,x+10*d*scale,y+26*d*scale,270,90,false,paint);
+    canvas.drawArc(x+1*d*scale,y+16*d*scale,x+8*d*scale,y+23*d*scale,270,90,false,paint);
+    paint.setStyle(Paint.Style.FILL);canvas.drawCircle(x+3*d*scale,y+20*d*scale,1.8f*d*scale,paint);
    }
   };
+  castIcon=castButton;
   castButton.setContentDescription("Transmitir para TV (Google Cast)");
   castButton.setClickable(true);
-  FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams((int)(58*getResources().getDisplayMetrics().density),(int)(58*getResources().getDisplayMetrics().density),Gravity.TOP|Gravity.END);
-  cp.setMargins(0,(int)(18*getResources().getDisplayMetrics().density),(int)(16*getResources().getDisplayMetrics().density),0);
+  FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams((int)(58*getResources().getDisplayMetrics().density),(int)(58*getResources().getDisplayMetrics().density),Gravity.TOP|Gravity.CENTER_HORIZONTAL);
+  cp.setMargins(0,(int)(8*getResources().getDisplayMetrics().density),0,0);
   root.addView(castButton,cp);
+  castStateLabel=new TextView(this);
+  castStateLabel.setTextColor(0xff48dca5);castStateLabel.setTextSize(11);castStateLabel.setGravity(Gravity.CENTER);
+  castStateLabel.setBackgroundColor(0xaa101820);
+  FrameLayout.LayoutParams sp=new FrameLayout.LayoutParams((int)(105*getResources().getDisplayMetrics().density),(int)(24*getResources().getDisplayMetrics().density),Gravity.TOP|Gravity.CENTER_HORIZONTAL);
+  sp.topMargin=(int)(55*getResources().getDisplayMetrics().density);
+  root.addView(castStateLabel,sp);castStateLabel.setVisibility(View.GONE);
   castButton.setOnClickListener(v->showCastDevices());
   castListener=new SessionManagerListener<CastSession>(){
-   @Override public void onSessionStarted(CastSession session,String id){sendToTv(session);handler.postDelayed(()->showTvControls(),650);}
-   @Override public void onSessionResumed(CastSession session,boolean wasSuspended){casting=true;observeRemote(session.getRemoteMediaClient());pauseLocal();handler.post(()->showTvControls());}
-   @Override public void onSessionEnded(CastSession session,int error){casting=false;stopObservingRemote();if(tvDialog!=null){tvDialog.dismiss();tvDialog=null;}Toast.makeText(PlayerActivity.this,"TV desconectada",Toast.LENGTH_SHORT).show();}
+   @Override public void onSessionStarted(CastSession session,String id){sendToTv(session);updateCastState();handler.postDelayed(()->showTvControls(),650);}
+   @Override public void onSessionResumed(CastSession session,boolean wasSuspended){casting=true;observeRemote(session.getRemoteMediaClient());pauseLocal();updateCastState();handler.post(()->showTvControls());}
+   @Override public void onSessionEnded(CastSession session,int error){casting=false;updateCastState();stopObservingRemote();if(tvDialog!=null){tvDialog.dismiss();tvDialog=null;}Toast.makeText(PlayerActivity.this,"TV desconectada",Toast.LENGTH_SHORT).show();}
    @Override public void onSessionStarting(CastSession session){}
    @Override public void onSessionStartFailed(CastSession session,int error){Toast.makeText(PlayerActivity.this,"Não foi possível conectar à TV",Toast.LENGTH_SHORT).show();}
    @Override public void onSessionEnding(CastSession session){}
    @Override public void onSessionResuming(CastSession session,String id){}
-   @Override public void onSessionResumeFailed(CastSession session,int error){casting=false;}
+   @Override public void onSessionResumeFailed(CastSession session,int error){casting=false;updateCastState();}
    @Override public void onSessionSuspended(CastSession session,int reason){}
   };
  }catch(Exception e){
@@ -186,12 +209,13 @@ public class PlayerActivity extends Activity {
   if(session==null||!session.isConnected()||url==null)return;
   RemoteMediaClient remote=session.getRemoteMediaClient();if(remote==null)return;
   observeRemote(remote);
+  remoteWasPlaying=false;
   MediaMetadata metadata=new MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE);
   metadata.putString(MediaMetadata.KEY_TITLE,displayName);
   String type=url.toLowerCase(java.util.Locale.ROOT).contains(".m3u8")?"application/x-mpegURL":url.toLowerCase(java.util.Locale.ROOT).contains(".mpd")?"application/dash+xml":"video/mp4";
   MediaInfo info=new MediaInfo.Builder(url).setStreamType(MediaInfo.STREAM_TYPE_BUFFERED).setContentType(type).setMetadata(metadata).build();
   long position=changingCastEpisode?stored(url):(player!=null?Math.max(0,player.getCurrentPosition()):stored(url));
-  pauseLocal();casting=true;
+  pauseLocal();casting=true;updateCastState();
   remote.load(info,new MediaLoadOptions.Builder().setAutoplay(true).setPlayPosition(position).build());
   changingCastEpisode=false;
   Toast.makeText(this,"Enviando para a TV",Toast.LENGTH_SHORT).show();
