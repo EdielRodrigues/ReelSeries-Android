@@ -125,14 +125,14 @@ public class PlayerActivity extends Activity {
   castIcon=castButton;
   castButton.setContentDescription("Transmitir para TV (Google Cast)");
   castButton.setClickable(true);
-  FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams((int)(58*getResources().getDisplayMetrics().density),(int)(58*getResources().getDisplayMetrics().density),Gravity.TOP|Gravity.CENTER_HORIZONTAL);
-  cp.setMargins(0,(int)(8*getResources().getDisplayMetrics().density),0,0);
+  FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams((int)(58*getResources().getDisplayMetrics().density),(int)(58*getResources().getDisplayMetrics().density),Gravity.TOP|Gravity.END);
+  cp.setMargins(0,(int)(8*getResources().getDisplayMetrics().density),(int)(14*getResources().getDisplayMetrics().density),0);
   root.addView(castButton,cp);
   castStateLabel=new TextView(this);
   castStateLabel.setTextColor(0xff48dca5);castStateLabel.setTextSize(11);castStateLabel.setGravity(Gravity.CENTER);
   castStateLabel.setBackgroundColor(0xaa101820);
-  FrameLayout.LayoutParams sp=new FrameLayout.LayoutParams((int)(105*getResources().getDisplayMetrics().density),(int)(24*getResources().getDisplayMetrics().density),Gravity.TOP|Gravity.CENTER_HORIZONTAL);
-  sp.topMargin=(int)(55*getResources().getDisplayMetrics().density);
+  FrameLayout.LayoutParams sp=new FrameLayout.LayoutParams((int)(105*getResources().getDisplayMetrics().density),(int)(24*getResources().getDisplayMetrics().density),Gravity.TOP|Gravity.END);
+  sp.topMargin=(int)(57*getResources().getDisplayMetrics().density);sp.rightMargin=(int)(6*getResources().getDisplayMetrics().density);
   root.addView(castStateLabel,sp);castStateLabel.setVisibility(View.GONE);
   castButton.setOnClickListener(v->showCastDevices());
   castListener=new SessionManagerListener<CastSession>(){
@@ -187,6 +187,7 @@ public class PlayerActivity extends Activity {
     .setPositiveButton("OK",null).show();
   }
  }
+ private int dpCast(int n){return (int)(n*getResources().getDisplayMetrics().density+0.5f);}
  private void showTvControls(){
   if(isFinishing()||castContext==null)return;
   CastSession session=castContext.getSessionManager().getCurrentCastSession();
@@ -198,9 +199,9 @@ public class PlayerActivity extends Activity {
   LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);
   int pad=(int)(18*getResources().getDisplayMetrics().density);
   layout.setPadding(pad,pad,pad,pad);
-  TextView status=new TextView(this);status.setText("📺 "+tvName+"\nConectado ao Google Cast\n\n"+displayName);
-  status.setTextSize(17);layout.addView(status);
-  tvEpisodeTitle=new TextView(this);tvEpisodeTitle.setText(displayName);tvEpisodeTitle.setTextSize(15);layout.addView(tvEpisodeTitle);
+  TextView status=new TextView(this);status.setText("📺 "+tvName+"  •  Conectado ao Google Cast");
+  status.setTextSize(14);layout.addView(status);
+  tvEpisodeTitle=new TextView(this);tvEpisodeTitle.setText(displayName);tvEpisodeTitle.setTextSize(16);tvEpisodeTitle.setTypeface(null,1);layout.addView(tvEpisodeTitle);
   tvSeek=new SeekBar(this);tvSeek.setMax(1000);layout.addView(tvSeek,new LinearLayout.LayoutParams(-1,-2));
   tvTime=new TextView(this);tvTime.setText("00:00:00 / 00:00:00");tvTime.setGravity(Gravity.CENTER);layout.addView(tvTime);
   tvSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
@@ -208,17 +209,23 @@ public class PlayerActivity extends Activity {
    public void onProgressChanged(SeekBar b,int progress,boolean fromUser){if(fromUser){RemoteMediaClient r=session.getRemoteMediaClient();if(r!=null&&r.getMediaInfo()!=null){long duration=r.getMediaInfo().getStreamDuration();if(tvTime!=null)tvTime.setText(formatTime(duration*progress/1000)+" / "+formatTime(duration));}}}
    public void onStopTrackingTouch(SeekBar b){RemoteMediaClient r=session.getRemoteMediaClient();if(r!=null&&r.getMediaInfo()!=null){long duration=r.getMediaInfo().getStreamDuration();if(duration>0)r.seek(duration*b.getProgress()/1000);}seekingTv=false;}
   });
-  LinearLayout controls=new LinearLayout(this);controls.setGravity(Gravity.CENTER);
-  Button back=new Button(this);back.setText("-10s");controls.addView(back);
-  Button play=new Button(this);play.setText("Pausar / Continuar");controls.addView(play);
-  Button next=new Button(this);next.setText("+10s");controls.addView(next);
+  LinearLayout controls=new LinearLayout(this);controls.setGravity(Gravity.CENTER);controls.setOrientation(LinearLayout.HORIZONTAL);
+  Button back=new Button(this);back.setText("-10s");back.setTextSize(12);back.setAllCaps(false);
+  Button play=new Button(this);play.setText("Pausar / Play");play.setTextSize(12);play.setAllCaps(false);
+  Button next=new Button(this);next.setText("+10s");next.setTextSize(12);next.setAllCaps(false);
+  controls.addView(back,new LinearLayout.LayoutParams(0,dpCast(46),1));
+  controls.addView(play,new LinearLayout.LayoutParams(0,dpCast(46),1.5f));
+  controls.addView(next,new LinearLayout.LayoutParams(0,dpCast(46),1));
   layout.addView(controls);
   LinearLayout episodesRow=new LinearLayout(this);episodesRow.setGravity(Gravity.CENTER);
-  Button previousEpisode=new Button(this);previousEpisode.setText("◀ Episódio anterior");episodesRow.addView(previousEpisode,new LinearLayout.LayoutParams(0,-2,1));
-  Button nextEpisode=new Button(this);nextEpisode.setText("Próximo episódio ▶");episodesRow.addView(nextEpisode,new LinearLayout.LayoutParams(0,-2,1));
+  Button previousEpisode=new Button(this);previousEpisode.setText("◀ Anterior");previousEpisode.setTextSize(12);previousEpisode.setAllCaps(false);
+  Button nextEpisode=new Button(this);nextEpisode.setText("Próximo ▶");nextEpisode.setTextSize(12);nextEpisode.setAllCaps(false);
+  episodesRow.addView(previousEpisode,new LinearLayout.LayoutParams(0,dpCast(48),1));
+  episodesRow.addView(nextEpisode,new LinearLayout.LayoutParams(0,dpCast(48),1));
   layout.addView(episodesRow);
   previousEpisode.setEnabled(playlist!=null&&playlistIndex>0);
   nextEpisode.setEnabled(playlist!=null&&playlistIndex>=0&&playlistIndex+1<playlist.length());
+  if(playlist==null||playlistIndex<0){TextView hint=new TextView(this);hint.setText("Para trocar episódios, abra a série pela lista de temporadas e aguarde o carregamento dos episódios.");hint.setTextSize(12);layout.addView(hint);}
   previousEpisode.setOnClickListener(v->{if(playEpisodeAt(playlistIndex-1)){if(tvDialog!=null)tvDialog.dismiss();handler.postDelayed(()->showTvControls(),350);}});
   nextEpisode.setOnClickListener(v->{if(playEpisodeAt(playlistIndex+1)){if(tvDialog!=null)tvDialog.dismiss();handler.postDelayed(()->showTvControls(),350);}});
   back.setOnClickListener(v->{RemoteMediaClient r=session.getRemoteMediaClient();if(r!=null)r.seek(Math.max(0,r.getApproximateStreamPosition()-10000));});
@@ -238,6 +245,7 @@ public class PlayerActivity extends Activity {
    .create();
   tvDialog.setOnDismissListener(d->{tvDialog=null;tvSeek=null;tvTime=null;tvEpisodeTitle=null;seekingTv=false;});
   tvDialog.show();
+  if(tvDialog.getWindow()!=null){tvDialog.getWindow().setLayout(Math.min(getResources().getDisplayMetrics().widthPixels-dpCast(28),dpCast(500)), -2);}
  }
  private void observeRemote(RemoteMediaClient remote){
   if(remote==observedRemote)return;
@@ -253,7 +261,7 @@ public class PlayerActivity extends Activity {
   if(session==null||!session.isConnected()||url==null)return;
   RemoteMediaClient remote=session.getRemoteMediaClient();if(remote==null)return;
   observeRemote(remote);
-  remoteWasPlaying=false;
+  remoteWasPlaying=false;nearEndChecks=0;
   MediaMetadata metadata=new MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE);
   metadata.putString(MediaMetadata.KEY_TITLE,displayName);
   String type=url.toLowerCase(java.util.Locale.ROOT).contains(".m3u8")?"application/x-mpegURL":url.toLowerCase(java.util.Locale.ROOT).contains(".mpd")?"application/dash+xml":"video/mp4";
@@ -283,7 +291,7 @@ player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);
   if(playlist==null||index<0||index>=playlist.length())return false;
   JSONObject o=playlist.optJSONObject(index);if(o==null)return false;
   String link=o.optString("url",o.optString("video",""));if(!link.startsWith("http"))return false;
-  if(index!=playlistIndex){playlistIndex=index;url=link;displayName=o.optString("name","Episódio "+(index+1));savedPosition=0;restored=false;playWhenReady=true;
+  if(index!=playlistIndex){lastAdvancedIndex=-1;lastAutoIndex=-1;playlistIndex=index;url=link;displayName=o.optString("name","Episódio "+(index+1));savedPosition=0;restored=false;playWhenReady=true;
    if(castContext!=null){CastSession s=castContext.getSessionManager().getCurrentCastSession();if(s!=null&&s.isConnected()){
     changingCastEpisode=true;sendToTv(s);Toast.makeText(this,"Na TV: "+displayName,Toast.LENGTH_SHORT).show();return true;
    }}
