@@ -93,10 +93,18 @@ public class PlayerActivity extends Activity {
  private final Runnable periodic=new Runnable(){@Override public void run(){saveProgress();handler.postDelayed(this,5000);}};
  private String progressKey(String link){try{byte[] hash=MessageDigest.getInstance("SHA-256").digest(link.getBytes(StandardCharsets.UTF_8));StringBuilder b=new StringBuilder("p_");for(int i=0;i<12;i++)b.append(String.format(java.util.Locale.US,"%02x",hash[i]&255));return b.toString();}catch(Exception e){return "p_"+link.hashCode();}}
  private long stored(String link){return getSharedPreferences("reel_playback_progress",MODE_PRIVATE).getLong(progressKey(link),0);}
+ private void saveHistory(long pos,long duration){
+  if(url==null||!url.startsWith("http"))return;
+  try{android.content.SharedPreferences pref=getSharedPreferences("reel_continue_history",MODE_PRIVATE);
+   org.json.JSONObject entry=new org.json.JSONObject();entry.put("url",url);entry.put("name",displayName);entry.put("position",pos);entry.put("duration",duration);entry.put("updated",System.currentTimeMillis());
+   String key=progressKey(url);if(duration>0&&pos>=duration-15000)pref.edit().remove(key).apply();
+   else if(pos>=5000)pref.edit().putString(key,entry.toString()).apply();
+  }catch(Exception ignored){}
+ }
  private void saveProgress(){if(player==null||url==null)return;long duration=player.getDuration(),pos=player.getCurrentPosition();if(pos<0)return;
   if(duration>0&&pos>=duration-15000){getSharedPreferences("reel_playback_progress",MODE_PRIVATE).edit().remove(progressKey(url)).apply();return;}
   getSharedPreferences("reel_playback_progress",MODE_PRIVATE).edit().putLong(progressKey(url),pos).apply();}
- private void markComplete(){if(url!=null)getSharedPreferences("reel_playback_progress",MODE_PRIVATE).edit().remove(progressKey(url)).apply();}
+ private void markComplete(){if(url!=null){getSharedPreferences("reel_playback_progress",MODE_PRIVATE).edit().remove(progressKey(url)).apply();getSharedPreferences("reel_continue_history",MODE_PRIVATE).edit().remove(progressKey(url)).apply();}}
  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(0xff000000);getWindow().setNavigationBarColor(0xff000000);getWindow().getDecorView().setSystemUiVisibility(4|1024|4096);setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
  displayName=getIntent().getStringExtra("name");if(displayName==null)displayName="Reel Séries";
  url=getIntent().getStringExtra("url");if(url==null||!url.startsWith("http")){finish();return;}
@@ -109,17 +117,18 @@ public class PlayerActivity extends Activity {
    private final Paint paint=new Paint(3);
    @Override protected void onDraw(Canvas canvas){
     super.onDraw(canvas);
-    float d=getResources().getDisplayMetrics().density;
-    float scale=Math.min(getWidth()/(48f*d),getHeight()/(48f*d));
-    float x=getWidth()/2f-12*d*scale,y=getHeight()/2f-11*d*scale;
-    paint.setColor(casting?0xff48dca5:0xffffffff);
-    paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(2.2f*d*scale);
-    canvas.drawLine(x+3*d*scale,y+2*d*scale,x+23*d*scale,y+2*d*scale,paint);
-    canvas.drawLine(x+23*d*scale,y+2*d*scale,x+23*d*scale,y+20*d*scale,paint);
-    canvas.drawLine(x+3*d*scale,y+2*d*scale,x+3*d*scale,y+8*d*scale,paint);
-    canvas.drawArc(x-5*d*scale,y+11*d*scale,x+10*d*scale,y+26*d*scale,270,90,false,paint);
-    canvas.drawArc(x+1*d*scale,y+16*d*scale,x+8*d*scale,y+23*d*scale,270,90,false,paint);
-    paint.setStyle(Paint.Style.FILL);canvas.drawCircle(x+3*d*scale,y+20*d*scale,1.8f*d*scale,paint);
+         // Ícone Cast dentro de uma área de 28x28, sem desenhar fora da View.
+     float unit=Math.min(getWidth(),getHeight())/40f;
+     canvas.save();canvas.translate((getWidth()-28*unit)/2f,(getHeight()-28*unit)/2f);
+     canvas.scale(unit,unit);
+     paint.setColor(casting?0xff48dca5:0xffffffff);
+     paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(2.4f);
+     canvas.drawLine(5,4,25,4,paint);canvas.drawLine(25,4,25,25,paint);
+     canvas.drawLine(5,4,5,10,paint);
+     canvas.drawArc(3,13,17,27,270,90,false,paint);
+     canvas.drawArc(3,19,11,27,270,90,false,paint);
+     paint.setStyle(Paint.Style.FILL);canvas.drawCircle(5,25,2.2f,paint);
+     canvas.restore();
    }
   };
   castIcon=castButton;
@@ -291,7 +300,7 @@ player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);
   if(playlist==null||index<0||index>=playlist.length())return false;
   JSONObject o=playlist.optJSONObject(index);if(o==null)return false;
   String link=o.optString("url",o.optString("video",""));if(!link.startsWith("http"))return false;
-  if(index!=playlistIndex){lastAdvancedIndex=-1;lastAutoIndex=-1;playlistIndex=index;url=link;displayName=o.optString("name","Episódio "+(index+1));savedPosition=0;restored=false;playWhenReady=true;
+  if(index!=playlistIndex){saveProgress();lastAdvancedIndex=-1;lastAutoIndex=-1;playlistIndex=index;url=link;displayName=o.optString("name","Episódio "+(index+1));savedPosition=0;restored=false;playWhenReady=true;
    if(castContext!=null){CastSession s=castContext.getSessionManager().getCurrentCastSession();if(s!=null&&s.isConnected()){
     changingCastEpisode=true;sendToTv(s);Toast.makeText(this,"Na TV: "+displayName,Toast.LENGTH_SHORT).show();return true;
    }}

@@ -67,7 +67,7 @@ public class AdminActivity extends Activity {
   section("Firebase Realtime Database");button("☁  Enviar catálogo completo",()->syncAll());
   section("Importação");button("↻  Atualizar playlist por URL",()->urlDialog(false));button("⇧  Importar arquivo JSON",()->pick(JSON));button("⇧  Importar arquivo M3U",()->pick(M3U));
   section("Diagnósticos");button("⚠  Títulos sem vídeo",()->diagnostic("sem_video",0));button("▧  Títulos sem capa",()->diagnostic("sem_capa",0));button("≡  Categorias vazias",()->diagnostic("sem_categoria",0));
-  section("Backup e segurança");button("⇩  Exportar backup JSON",this::exportCatalog);button("♟  Permissões administrativas",()->new AlertDialog.Builder(this).setTitle("Acesso administrativo").setMessage("O acesso é validado no Firestore em admins/{uid}, com active=true e role=admin.").setPositiveButton("OK",null).show());button("↻  Atualizar painel",this::dashboard);button("Sair da conta",()->{auth.signOut();login();});button("←  Voltar",this::dashboard);
+  section("Backup e segurança");button("⇩  Exportar backup JSON",this::exportCatalog);button("♟  Permissões administrativas",()->new AlertDialog.Builder(this).setTitle("Acesso administrativo").setMessage("O acesso é validado no Firestore em admins/{uid}, com active=true e role=admin.").setPositiveButton("OK",null).show());button("↻  Atualizar painel",this::dashboard);button("Sair da conta",()->{auth.signOut();login();});button("←  Voltar",this::dashboard);button("←  Voltar ao Meu Perfil",()->finish());
  }
  private void seedBundledCatalog(){
   worker.execute(()->{
@@ -147,6 +147,6 @@ public class AdminActivity extends Activity {
  private void syncOrigin(String origin){if(!authorized)return;FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{try{int n=FirebaseCatalogSync.upload(this,catalog,origin,token,c->msg("Firebase: "+c+" registros enviados"));FirebaseCatalogSync.markChanged(this,token);msg("Importação sincronizada no Firebase: "+n+" registros.");}catch(Exception e){msg("Importado localmente, mas não enviado ao Firebase: "+e.getMessage());}}),e->msg("Importado localmente; falha de autenticação Firebase: "+e));}
  private void syncOne(String id){if(!authorized)return;FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{try{FirebaseCatalogSync.uploadOne(this,catalog,id,token);FirebaseCatalogSync.markChanged(this,token);msg("Título sincronizado no Firebase.");}catch(Exception e){msg("Salvo localmente; falha no Firebase: "+e.getMessage());}}),e->msg("Falha Firebase: "+e));}
  private void syncDelete(String id){if(!authorized)return;FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{try{FirebaseCatalogSync.deleteOne(this,id,token);FirebaseCatalogSync.markChanged(this,token);}catch(Exception e){msg("Excluído localmente; falha ao excluir do Firebase: "+e.getMessage());}}),e->msg("Falha Firebase: "+e));}
- @Override public void onBackPressed(){if(authorized)dashboard();else super.onBackPressed();}
+ @Override public void onBackPressed(){finish();}
  @Override protected void onDestroy(){worker.shutdownNow();catalog.close();super.onDestroy();}
 }
