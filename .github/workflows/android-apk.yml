@@ -1,3 +1,4 @@
+
 name: Gerar APK Android
 
 on:
@@ -45,6 +46,39 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+
+      - name: Restaurar assinatura fixa do APK
+        shell: bash
+        env:
+          REEL_DEBUG_KEYSTORE_B64: ${{ secrets.REEL_DEBUG_KEYSTORE_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$REEL_DEBUG_KEYSTORE_B64" ]; then
+            echo 'ERRO: configure o secret REEL_DEBUG_KEYSTORE_B64 no GitHub.' >&2
+            exit 1
+          fi
+          mkdir -p "$HOME/.android"
+          printf '%s' "$REEL_DEBUG_KEYSTORE_B64" | base64 --decode > "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+          keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
+
+      - name: Incrementar versionCode para permitir atualização
+        shell: bash
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,re,pathlib
+          p=pathlib.Path('app/build.gradle.kts')
+          if not p.exists(): raise SystemExit('Arquivo app/build.gradle.kts não encontrado')
+          s=p.read_text()
+          code=100000+int(os.environ['RUN_NUMBER'])
+          s,n=re.subn(r'\bversionCode\s*=\s*\d+',f'versionCode = {code}',s,count=1)
+          if n!=1: raise SystemExit('Não foi possível localizar versionCode no Gradle')
+          p.write_text(s)
+          print('versionCode atualizado:',code)
+          PY
 
       - name: Compilar APK
         run: gradle --no-daemon --stacktrace assembleDebug
