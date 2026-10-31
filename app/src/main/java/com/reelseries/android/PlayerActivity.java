@@ -14,9 +14,15 @@ import androidx.mediarouter.media.MediaRouter;
 import androidx.mediarouter.media.MediaRouteSelector;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebSettings;
+import android.net.Uri;
 import org.json.*;import java.security.MessageDigest;import java.nio.charset.StandardCharsets;
 public class PlayerActivity extends Activity {
- private ExoPlayer player;private PlayerView playerView;private long savedPosition=0;private String url;private boolean playWhenReady=true;
+ private ExoPlayer player;private PlayerView playerView;private FrameLayout playerRoot;private WebView webPlayer;private boolean usingWeb=false;private long savedPosition=0;private String url;private boolean playWhenReady=true;
  private CastContext castContext;
  private String castError="";
  private SessionManagerListener<CastSession> castListener;
@@ -109,7 +115,7 @@ public class PlayerActivity extends Activity {
  displayName=getIntent().getStringExtra("name");if(displayName==null)displayName="Reel Séries";
  url=getIntent().getStringExtra("url");if(url==null||!url.startsWith("http")){finish();return;}
  try{String raw=getIntent().getStringExtra("playlist");if(raw!=null){playlist=new JSONArray(raw);playlistIndex=getIntent().getIntExtra("playlistIndex",-1);}}catch(Exception ignored){playlist=null;}
- FrameLayout root=new FrameLayout(this);root.setBackgroundColor(0xff000000);playerView=new PlayerView(this);playerView.setUseController(true);playerView.setControllerShowTimeoutMs(4500);playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);root.addView(playerView,new FrameLayout.LayoutParams(-1,-1));setContentView(root);
+ FrameLayout root=new FrameLayout(this);playerRoot=root;root.setBackgroundColor(0xff000000);playerView=new PlayerView(this);playerView.setUseController(true);playerView.setControllerShowTimeoutMs(4500);playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);root.addView(playerView,new FrameLayout.LayoutParams(-1,-1));setContentView(root);
  // Botão Cast próprio: não usa o diálogo de MediaRouteButton que fechava a Activity.
  try{
   castContext=CastContext.getSharedInstance(this);
@@ -118,16 +124,24 @@ public class PlayerActivity extends Activity {
    @Override protected void onDraw(Canvas canvas){
     super.onDraw(canvas);
          // Ícone Cast dentro de uma área de 28x28, sem desenhar fora da View.
-     float unit=Math.min(getWidth(),getHeight())/40f;
-     canvas.save();canvas.translate((getWidth()-28*unit)/2f,(getHeight()-28*unit)/2f);
-     canvas.scale(unit,unit);
+     // Símbolo Cast inteiro, centralizado em uma área 28x28 dp.
+     float density=getResources().getDisplayMetrics().density;
+     float size=Math.min(28f*density,Math.min(getWidth(),getHeight())-8f*density);
+     if(size<=0)return;
+     canvas.save();
+     canvas.translate((getWidth()-size)/2f,(getHeight()-size)/2f);
+     canvas.scale(size/28f,size/28f);
      paint.setColor(casting?0xff48dca5:0xffffffff);
-     paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(2.4f);
-     canvas.drawLine(5,4,25,4,paint);canvas.drawLine(25,4,25,25,paint);
-     canvas.drawLine(5,4,5,10,paint);
+     paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(2.2f);
+     paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);
+     // Tela do Cast: borda superior, direita e início da lateral esquerda.
+     android.graphics.Path screen=new android.graphics.Path();
+     screen.moveTo(3,3);screen.lineTo(25,3);screen.lineTo(25,25);
+     screen.moveTo(3,3);screen.lineTo(3,9);
+     canvas.drawPath(screen,paint);
      canvas.drawArc(3,13,17,27,270,90,false,paint);
      canvas.drawArc(3,19,11,27,270,90,false,paint);
-     paint.setStyle(Paint.Style.FILL);canvas.drawCircle(5,25,2.2f,paint);
+     paint.setStyle(Paint.Style.FILL);canvas.drawCircle(3.5f,24.5f,2.1f,paint);
      canvas.restore();
    }
   };
@@ -163,6 +177,7 @@ public class PlayerActivity extends Activity {
  if(b!=null){savedPosition=b.getLong("position",0);playWhenReady=b.getBoolean("playing",true);restored=true;playlistIndex=b.getInt("playlistIndex",playlistIndex);url=b.getString("url",url);}
  }
  private void showCastDevices(){
+  if(usingWeb){Toast.makeText(this,"Transmissão deste site depende do próprio player incorporado",Toast.LENGTH_LONG).show();return;}
   if(castContext!=null){
    CastSession current=castContext.getSessionManager().getCurrentCastSession();
    if(current!=null&&current.isConnected()){showTvControls();return;}
@@ -267,7 +282,7 @@ public class PlayerActivity extends Activity {
  }
  private void pauseLocal(){if(player!=null){saveProgress();player.pause();}}
  private void sendToTv(CastSession session){
-  if(session==null||!session.isConnected()||url==null)return;
+  if(session==null||!session.isConnected()||url==null||usingWeb)return;
   RemoteMediaClient remote=session.getRemoteMediaClient();if(remote==null)return;
   observeRemote(remote);
   remoteWasPlaying=false;nearEndChecks=0;
@@ -289,12 +304,14 @@ public class PlayerActivity extends Activity {
   }catch(Exception e){android.util.Log.e("ReelSeriesCast","Erro na busca",e);}
  }
 handler.removeCallbacks(tvUpdater);handler.post(tvUpdater);
+if(webPlayer!=null){webPlayer.onResume();return;}
+if(isWebLink(url)){openWebPlayer(url);return;}
 player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);
  player.addListener(new Player.Listener(){
   @Override public void onPlayerError(PlaybackException e){if(!isFinishing())new AlertDialog.Builder(PlayerActivity.this).setTitle("Não foi possível reproduzir").setMessage("O servidor ou o formato do vídeo pode estar indisponível.\n\n"+e.getErrorCodeName()).setPositiveButton("Voltar",(d,w)->finish()).show();}
   @Override public void onPlaybackStateChanged(int state){if(state==Player.STATE_ENDED&&!casting){markComplete();playNext();}}
  });
- player.setMediaItem(MediaItem.fromUri(url));player.prepare();long pos=restored?savedPosition:stored(url);player.seekTo(Math.max(0,pos));player.setPlayWhenReady(!casting&&playWhenReady);handler.postDelayed(periodic,5000);
+ player.setMediaItem(buildMediaItem(url));player.prepare();long pos=restored?savedPosition:stored(url);player.seekTo(Math.max(0,pos));player.setPlayWhenReady(!casting&&playWhenReady);handler.postDelayed(periodic,5000);
  }
  private boolean playEpisodeAt(int index){
   if(playlist==null||index<0||index>=playlist.length())return false;
@@ -304,11 +321,49 @@ player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);
    if(castContext!=null){CastSession s=castContext.getSessionManager().getCurrentCastSession();if(s!=null&&s.isConnected()){
     changingCastEpisode=true;sendToTv(s);Toast.makeText(this,"Na TV: "+displayName,Toast.LENGTH_SHORT).show();return true;
    }}
-   if(player!=null){player.setMediaItem(MediaItem.fromUri(url));player.prepare();player.setPlayWhenReady(true);}return true;
+   if(isWebLink(url)){openWebPlayer(url);return true;}
+   closeWebPlayer();
+   if(player==null){player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);}
+   player.setMediaItem(buildMediaItem(url));player.prepare();player.setPlayWhenReady(true);return true;
   }return false;
  }
  private void playNext(){playEpisodeAt(playlistIndex+1);}
- @Override protected void onStop(){if(mediaRouter!=null&&routeCallback!=null){mediaRouter.removeCallback(routeCallback);routeCallback=null;}if(castContext!=null&&castListener!=null)castContext.getSessionManager().removeSessionManagerListener(castListener,CastSession.class);handler.removeCallbacks(periodic);handler.removeCallbacks(tvUpdater);if(player!=null){saveProgress();savedPosition=player.getCurrentPosition();playWhenReady=player.getPlayWhenReady();restored=true;playerView.setPlayer(null);player.release();player=null;}super.onStop();}
- @Override protected void onDestroy(){stopObservingRemote();super.onDestroy();}
+ private boolean isWebLink(String link){
+  if(link==null)return false;
+  String l=link.toLowerCase(java.util.Locale.ROOT);
+  if(l.contains("/embed/")||l.contains("/movie/")||l.contains("youtube.com/watch")||l.contains("youtu.be/")||l.contains("/iframe/"))return true;
+  if(l.matches(".*\\.(m3u8|mpd|mp4|m4v|mkv|webm|mov|mp3|aac|ts|mpg|mpeg|3gp|avi)([?#].*)?$"))return false;
+  return l.matches(".*\\.(html?|php)([?#].*)?$");
+ }
+ private MediaItem buildMediaItem(String link){
+  MediaItem.Builder b=new MediaItem.Builder().setUri(Uri.parse(link));
+  String l=link.toLowerCase(java.util.Locale.ROOT);
+  if(l.contains(".m3u8"))b.setMimeType(MimeTypes.APPLICATION_M3U8);
+  else if(l.contains(".mpd"))b.setMimeType(MimeTypes.APPLICATION_MPD);
+  return b.build();
+ }
+ private void openWebPlayer(String link){
+  if(playerRoot==null||isFinishing())return;
+  if(player!=null){player.pause();playerView.setPlayer(null);player.release();player=null;}
+  closeWebPlayer();usingWeb=true;playerView.setVisibility(View.GONE);
+  webPlayer=new WebView(this);
+  WebSettings settings=webPlayer.getSettings();
+  settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(true);
+  settings.setMediaPlaybackRequiresUserGesture(false);
+  webPlayer.setBackgroundColor(0xff000000);
+  webPlayer.setWebViewClient(new WebViewClient());
+  webPlayer.setWebChromeClient(new WebChromeClient());
+  playerRoot.addView(webPlayer,0,new FrameLayout.LayoutParams(-1,-1));
+  webPlayer.loadUrl(link);
+ }
+ private void closeWebPlayer(){
+  if(webPlayer!=null){WebView w=webPlayer;webPlayer=null;
+   if(playerRoot!=null)playerRoot.removeView(w);
+   w.stopLoading();w.loadUrl("about:blank");w.destroy();
+  }
+  usingWeb=false;if(playerView!=null)playerView.setVisibility(View.VISIBLE);
+ }
+ @Override protected void onStop(){if(mediaRouter!=null&&routeCallback!=null){mediaRouter.removeCallback(routeCallback);routeCallback=null;}if(castContext!=null&&castListener!=null)castContext.getSessionManager().removeSessionManagerListener(castListener,CastSession.class);handler.removeCallbacks(periodic);handler.removeCallbacks(tvUpdater);if(webPlayer!=null)webPlayer.onPause();if(player!=null){saveProgress();savedPosition=player.getCurrentPosition();playWhenReady=player.getPlayWhenReady();restored=true;playerView.setPlayer(null);player.release();player=null;}super.onStop();}
+ @Override protected void onDestroy(){closeWebPlayer();stopObservingRemote();super.onDestroy();}
  @Override protected void onSaveInstanceState(Bundle b){b.putLong("position",player!=null?player.getCurrentPosition():savedPosition);b.putBoolean("playing",player!=null?player.getPlayWhenReady():playWhenReady);b.putInt("playlistIndex",playlistIndex);b.putString("url",url);super.onSaveInstanceState(b);}
 }
