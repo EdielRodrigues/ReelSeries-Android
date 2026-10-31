@@ -51,7 +51,45 @@ public class MainActivity extends Activity {
  TextView navText(String value,int size){TextView v=new TextView(this);v.setText(value);v.setTextColor(Color.WHITE);v.setTextSize(size);v.setGravity(Gravity.CENTER_VERTICAL);return v;}
  TextView actionText(String value,boolean primary){TextView v=navText(value,14);v.setGravity(Gravity.CENTER);v.setTypeface(null,1);v.setTextColor(primary?0xff11151d:Color.WHITE);android.graphics.drawable.GradientDrawable bg=new android.graphics.drawable.GradientDrawable();bg.setColor(primary?Color.WHITE:0xff30333c);bg.setCornerRadius(dp(12));v.setBackground(bg);return v;}
  void chooseCategory(String q){mode=q;selected="Todas";if(categories!=null&&categories.getSelectedItemPosition()!=0)categories.setSelection(0);resetFeed();}
- void loadCloud(){pool.execute(()->{try(LocalCatalog db=new LocalCatalog(this)){int n=FirebaseCatalogSync.download(this,db,c->runOnUiThread(()->status.setText("Sincronizando Firebase: "+c)));runOnUiThread(()->{if(n>0){java.util.TreeSet<String> cats=new java.util.TreeSet<>(db.categories());for(String c:cats)if(!catNames.contains(c))catNames.add(c);((ArrayAdapter)categories.getAdapter()).notifyDataSetChanged();resetFeed();}});}catch(Exception e){runOnUiThread(()->{if(status!=null)status.setText("Catálogo local disponível • Firebase: "+e.getMessage());});}}); }
+ // Persistent SQLite cache: check at most once per 24h, never redownload on every open.
+ final java.util.concurrent.atomic.AtomicBoolean cloudBusy=new java.util.concurrent.atomic.AtomicBoolean(false);
+ static final long CLOUD_INTERVAL_MS=24L*60*60*1000;
+ void loadCloud(){
+  if(!FirebaseCatalogSync.configured(this)||!cloudBusy.compareAndSet(false,true))return;
+  pool.execute(()->{
+   try{
+    android.content.SharedPreferences pref=getSharedPreferences("reel_cloud_cache_v194",MODE_PRIVATE);
+    long now=System.currentTimeMillis(),last=pref.getLong("last_check",0);
+    // Also handle clock changes and future timestamps safely.
+    if(last>0 && now>=last && now-last<CLOUD_INTERVAL_MS)return;
+    String revision=FirebaseCatalogSync.revision(this);
+    String previous=pref.getString("revision","");
+    boolean first=!pref.getBoolean("download_complete",false);
+    if(!first && revision.equals(previous)){
+     pref.edit().putLong("last_check",System.currentTimeMillis()).apply();return;
+    }
+    runOnUiThread(()->{if(status!=null)status.setText("Atualizando catálogo do Firebase...");});
+    int n;
+    java.util.ArrayList<String> cats;
+    try(LocalCatalog db=new LocalCatalog(this)){
+     n=FirebaseCatalogSync.download(this,db,c->runOnUiThread(()->{if(status!=null)status.setText("Salvando no celular: "+c+" títulos");}));
+     cats=db.categories();
+    }
+    // Commit the timestamp ONLY after a successful complete download.
+    pref.edit().putString("revision",revision).putBoolean("download_complete",true)
+     .putLong("last_check",System.currentTimeMillis()).apply();
+    runOnUiThread(()->{
+     if(isFinishing()||categories==null)return;
+     for(String c:cats)if(!catNames.contains(c))catNames.add(c);
+     ((ArrayAdapter)categories.getAdapter()).notifyDataSetChanged();
+     resetFeed();
+     if(status!=null)status.setText("Catálogo salvo no celular • "+n+" registros sincronizados");
+    });
+   }catch(Exception e){runOnUiThread(()->{if(status!=null)status.setText("Catálogo local disponível • atualização pendente: "+e.getMessage());});}
+   finally{cloudBusy.set(false);}
+  });
+ }
+
  void resetFeed(){if(search==null||grid==null||adapter==null)return;requestVersion++;pageOffset=0;endReached=false;loadingPage=false;bundledPaging=false;localPages.clear();shown.clear();adapter.notifyDataSetChanged();updateGridHeight();loadNextPage();}
  boolean matches(JSONObject o,String query){String name=o.optString("nome","");String cat=o.optString("categoria","");String c=cat.toLowerCase(java.util.Locale.ROOT);String n=name.toLowerCase(java.util.Locale.ROOT);if(!n.contains(query))return false;if(!selected.equals("Todas")&&!selected.equals(cat))return false;boolean tv=c.contains("iptv")||c.contains("canal")||c.contains("tv ao vivo")||c.equals("tv")||c.contains("televis");boolean series=SeriesHelper.isSeries(o);if(mode.equals("TV / IPTV"))return tv;if(mode.equals("Séries"))return series&&!tv;if(mode.equals("Filmes"))return !tv&&!series&&(c.contains("filme")||c.contains("movie")||c.contains("cinema"));return true;}
  void loadNextPage(){

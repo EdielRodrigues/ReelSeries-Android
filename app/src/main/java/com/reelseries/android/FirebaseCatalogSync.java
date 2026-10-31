@@ -68,6 +68,14 @@ public final class FirebaseCatalogSync {
  public static void deleteOne(Context ctx,String id,String token)throws Exception{
   request(endpoint(ctx,"items/"+URLEncoder.encode(id,"UTF-8"),token),"DELETE",null);
  }
+ /** Version marker: updated only after an administrator successfully changes cloud data. */
+ public static void markChanged(Context ctx,String token)throws Exception{
+  request(endpoint(ctx,"meta/revision",token),"PUT","{\".sv\":\"timestamp\"}");
+ }
+ public static String revision(Context ctx)throws Exception{
+  String value=request(endpoint(ctx,"meta/revision",null),"GET",null).trim();
+  return value.equals("null")?"legacy":value;
+ }
  public static int download(Context ctx,LocalCatalog db,LocalCatalog.Progress progress)throws Exception{
   String baseUrl=base(ctx)+"/catalogo_unico/items.json?orderBy=%22%24key%22&limitToFirst=201";
   String last=null;int count=0;
