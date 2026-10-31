@@ -23,6 +23,17 @@ public class DetailsActivity extends Activity {
   String json=seriesPlaylistJson;Integer index=seriesPlaylistIndexes.get(episodeUrl);
   if(json!=null&&index!=null){intent.putExtra("playlist",json);intent.putExtra("playlistIndex",index);}
  }
+ private synchronized java.util.zip.ZipFile openEpisodeIndex() throws java.io.IOException {
+  java.io.File cache=new java.io.File(getCacheDir(),"reel_episode_index_v1.zip");
+  if(!cache.exists()||cache.length()==0){
+   java.io.File temp=new java.io.File(getCacheDir(),"reel_episode_index_v1.tmp");
+   try(InputStream in=getAssets().open("episode_index.zip");java.io.FileOutputStream out=new java.io.FileOutputStream(temp)){
+    byte[] b=new byte[16384];int n;while((n=in.read(b))!=-1)out.write(b,0,n);
+   }
+   if(!temp.renameTo(cache))throw new java.io.IOException("Falha ao preparar índice");
+  }
+  return new java.util.zip.ZipFile(cache);
+ }
  private void showSeasons(LinearLayout root,JSONObject selected){
   TextView heading=text("TEMPORADAS E EPISÓDIOS",20,0xffffffff);heading.setTypeface(null,1);root.addView(heading);
   TextView progress=text("Organizando episódios da série...",14,0xffaab6c8);root.addView(progress);
@@ -32,8 +43,24 @@ public class DetailsActivity extends Activity {
    java.util.TreeMap<Integer,java.util.TreeMap<Integer,JSONObject>> grouped=new java.util.TreeMap<>();
    String wanted=SeriesHelper.key(selected);
    try{
-    try(InputStream in=getAssets().open("catalogo.json")){byte[] buf=new byte[32768];ByteArrayOutputStream out=new ByteArrayOutputStream();int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);JSONArray arr=new JSONArray(out.toString("UTF-8"));for(int i=0;i<arr.length();i++){JSONObject v=arr.optJSONObject(i);addEpisode(grouped,wanted,v);}}
-    LocalCatalog db=new LocalCatalog(this);int count=db.count();for(int offset=0;offset<count;offset+=250){for(JSONObject v:db.page(offset,250))addEpisode(grouped,wanted,v);}
+    // Índice pré-gerado por série: evita ler e analisar o catálogo inteiro (23 MB) a cada abertura.
+    try{
+     java.security.MessageDigest md=java.security.MessageDigest.getInstance("SHA-256");
+     byte[] digest=md.digest(wanted.getBytes("UTF-8"));StringBuilder hash=new StringBuilder();
+     for(int i=0;i<12;i++)hash.append(String.format(java.util.Locale.US,"%02x",digest[i]&255));
+     try(java.util.zip.ZipFile archive=openEpisodeIndex()){
+     java.util.zip.ZipEntry item=archive.getEntry(hash+".json");
+     if(item==null)throw new java.io.FileNotFoundException(hash);
+     try(InputStream in=archive.getInputStream(item)){
+      ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] buf=new byte[8192];int n;
+      while((n=in.read(buf))!=-1)out.write(buf,0,n);
+      JSONArray arr=new JSONArray(out.toString("UTF-8"));
+      for(int i=0;i<arr.length();i++)addEpisode(grouped,wanted,arr.optJSONObject(i));
+     }
+     }
+    }catch(java.io.FileNotFoundException ignored){} // Série não incluída no catálogo original.
+    LocalCatalog db=new LocalCatalog(this);
+    for(JSONObject v:db.episodeCandidates(SeriesHelper.name(selected)))addEpisode(grouped,wanted,v);
     runOnUiThread(()->{if(isFinishing())return;progress.setText(grouped.isEmpty()?"Nenhum episódio encontrado.":grouped.size()+" temporada(s) encontrada(s)");
      java.util.ArrayList<Integer> keys=new java.util.ArrayList<>(grouped.keySet());java.util.ArrayList<String> labels=new java.util.ArrayList<>();for(Integer k:keys)labels.add("Temporada "+k+" • "+grouped.get(k).size()+" episódios");
      JSONArray orderedPlaylist=new JSONArray();java.util.HashMap<String,Integer> urlIndexes=new java.util.HashMap<>();

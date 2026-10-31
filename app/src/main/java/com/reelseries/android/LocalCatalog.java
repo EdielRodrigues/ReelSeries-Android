@@ -41,6 +41,18 @@ public class LocalCatalog extends SQLiteOpenHelper {
   args.add(String.valueOf(Math.max(1,Math.min(limit,500))));args.add(String.valueOf(Math.max(0,offset)));
   try(Cursor cur=getReadableDatabase().rawQuery(sql,args.toArray(new String[0]))){while(cur.moveToNext()){JSONObject o=new JSONObject();try{for(int i=0;i<6;i++)o.put(cur.getColumnName(i),cur.getString(i));result.add(o);}catch(Exception ignored){}}}return result;
  }
+ public ArrayList<JSONObject> episodeCandidates(String seriesName){
+  ArrayList<JSONObject> result=new ArrayList<>();
+  if(seriesName==null||seriesName.trim().isEmpty())return result;
+  String escaped=seriesName.replace("\\","\\\\").replace("%","\\%").replace("_","\\_");
+  String sql="SELECT id,nome,categoria,capa,url,sinopse FROM media WHERE nome LIKE ? ESCAPE '\\' ORDER BY nome";
+  try(Cursor c=getReadableDatabase().rawQuery(sql,new String[]{escaped+"%"})){
+   while(c.moveToNext()){
+    JSONObject o=new JSONObject();try{for(int i=0;i<6;i++)o.put(c.getColumnName(i),c.getString(i));result.add(o);}catch(Exception ignored){}
+   }
+  }
+  return result;
+ }
  public ArrayList<JSONObject> page(int offset,int limit){
   ArrayList<JSONObject> result=new ArrayList<>();
   try(Cursor c=getReadableDatabase().rawQuery("SELECT id,nome,categoria,capa,url,sinopse FROM media ORDER BY nome LIMIT ? OFFSET ?",new String[]{String.valueOf(limit),String.valueOf(offset)})){
