@@ -79,47 +79,41 @@ public final class FirebaseCatalogSync {
   if(path==null||path.contains("..")||path.contains("#")||path.contains("$")||path.contains("[")||path.contains("]")||path.contains("\\"))throw new IOException("Caminho Firebase inválido");
   if(!path.isEmpty())for(String segment:path.split("/",-1))if(segment.isEmpty()||segment.equals(".")||segment.equals(".."))throw new IOException("Caminho Firebase inválido");
  }
- /** Delete a chosen subtree in bounded requests, descending into folders first. */
+ /** Remove direct children in batches of 500, including their nested data.
+  * Never traverse each episode individually: doing so caused thousands of network calls.
+  * If Firebase rejects a batch because of its size, retry smaller batches. */
  public static int deleteFolderBatched(Context ctx,String path,String token,LocalCatalog.Progress progress)throws Exception{
   validatePath(path);
-  if(path.isEmpty()||path.equals("catalogo_unico")||path.equals("catalogo_unico/meta")||path.startsWith("users")||path.startsWith("admins")||path.startsWith("config"))throw new IOException("Pasta protegida");
-  if(path.equals("catalogo_unico/items"))return deleteCatalogItems(ctx,token,progress);
-  int[] deleted={0};deleteTree(ctx,path,token,progress,deleted,0);return deleted[0];
- }
- private static int deleteCatalogItems(Context ctx,String token,LocalCatalog.Progress progress)throws Exception{
+  if(path.isEmpty()||path.equals("catalogo_unico")||path.equals("catalogo_unico/meta")||path.equals("__meta")||path.equals("admins")||path.equals("config"))throw new IOException("Pasta protegida; selecione uma subpasta");
   int total=0;
-  for(int page=0;page<100000;page++){
-   String address=endpoint(ctx,"items",token)+"&orderBy=%22%24key%22&limitToFirst=100";
-   String response=request(address,"GET",null);if(response.equals("null"))break;
-   JSONObject batch=new JSONObject(response);
-   java.util.ArrayList<String> keys=new java.util.ArrayList<>();java.util.Iterator<String> it=batch.keys();while(it.hasNext())keys.add(it.next());
-   if(keys.isEmpty())break;
-   deleteLeafBatch(ctx,"catalogo_unico/items",keys,token);total+=keys.size();progress.update(total);
-  }
-  return total;
- }
- private static void deleteTree(Context ctx,String path,String token,LocalCatalog.Progress progress,int[] deleted,int depth)throws Exception{
-  if(depth>32)throw new IOException("Estrutura muito profunda");
+  // A shallow read returns child keys only, not the huge episode objects.
   java.util.ArrayList<String> keys=listFolders(ctx,path,token);
   if(keys.isEmpty()){
    request(base(ctx)+"/"+path+".json?auth="+URLEncoder.encode(token,"UTF-8"),"DELETE",null);
-   deleted[0]++;progress.update(deleted[0]);return;
+   progress.update(1);return 1;
   }
-  // A batch of leaf children can be deleted with one PATCH without exceeding the request limit.
-  java.util.ArrayList<String> leaves=new java.util.ArrayList<>();
-  for(String key:keys){
-   String child=path+"/"+key;
-   java.util.ArrayList<String> descendants=listFolders(ctx,child,token);
-   if(descendants.isEmpty()){
-    leaves.add(key);
-    if(leaves.size()>=100){deleteLeafBatch(ctx,path,leaves,token);deleted[0]+=leaves.size();progress.update(deleted[0]);leaves.clear();}
-   }else{if(!leaves.isEmpty()){deleteLeafBatch(ctx,path,leaves,token);deleted[0]+=leaves.size();progress.update(deleted[0]);leaves.clear();}deleteTree(ctx,child,token,progress,deleted,depth+1);}
+  for(int offset=0;offset<keys.size();offset+=500){
+   int end=Math.min(keys.size(),offset+500);
+   deleteLeafBatch(ctx,path,keys.subList(offset,end),token);
+   total+=end-offset;progress.update(total);
   }
-  if(!leaves.isEmpty()){deleteLeafBatch(ctx,path,leaves,token);deleted[0]+=leaves.size();progress.update(deleted[0]);}
+  // Remove the now-empty parent node too.
+  request(base(ctx)+"/"+path+".json?auth="+URLEncoder.encode(token,"UTF-8"),"DELETE",null);
+  return total;
  }
  private static void deleteLeafBatch(Context ctx,String parent,java.util.List<String> keys,String token)throws Exception{
+  if(keys.isEmpty())return;
   JSONObject patch=new JSONObject();for(String key:keys)patch.put(key,JSONObject.NULL);
-  request(base(ctx)+"/"+parent+".json?auth="+URLEncoder.encode(token,"UTF-8"),"PATCH",patch.toString());
+  try{
+   request(base(ctx)+"/"+parent+".json?auth="+URLEncoder.encode(token,"UTF-8"),"PATCH",patch.toString());
+  }catch(IOException e){
+   // RTDB can reject a large write even when the PATCH itself is small.
+   // Split it without losing the already completed batches.
+   if(keys.size()<=1)throw e;
+   int half=keys.size()/2;
+   deleteLeafBatch(ctx,parent,keys.subList(0,half),token);
+   deleteLeafBatch(ctx,parent,keys.subList(half,keys.size()),token);
+  }
  }
  public static void deleteAll(Context ctx,String token)throws Exception{
   deleteFolderBatched(ctx,"catalogo_unico/items",token,n->{});

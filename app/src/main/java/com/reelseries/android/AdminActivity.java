@@ -201,19 +201,32 @@ public class AdminActivity extends Activity {
    msg("Atualização concluída: "+n+" registros. Abra novamente o catálogo para visualizar.");
   }catch(Exception e){msg("Falha ao atualizar: "+e.getMessage());}finally{busy=false;}});
  }
- private void browseFirebaseFolders(String path){
+ private static final int FIREBASE_PAGE_SIZE=60;
+ private int folderNavigationId=0;
+ private void browseFirebaseFolders(String path){browseFirebaseFolders(path,0);}
+ private void browseFirebaseFolders(String path,int offset){
   if(!authorized||busy)return;
-  screen("Escolher pasta do Firebase");msg("Carregando pastas... " +(path.isEmpty()?"Raiz":path));
+  final int navigationId=++folderNavigationId;
+  screen("Escolher pasta do Firebase");
+  msg("Carregando nomes, sem baixar o conteúdo dos episódios...");
   button("← Voltar",()->{int n=path.lastIndexOf('/');if(path.isEmpty())settingsPanel();else browseFirebaseFolders(n<0?"":path.substring(0,n));});
+  // Network and sorting always happen outside Android's main thread.
   FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{
    try{
     java.util.ArrayList<String> keys=FirebaseCatalogSync.listFolders(this,path,token);
-    runOnUiThread(()->{if(isFinishing())return;
-     msg("Pasta: /"+path+" • "+keys.size()+" itens. Escolha uma pasta para abrir.");
-     if(!path.isEmpty()&&!path.equals("catalogo_unico")&&!path.equals("catalogo_unico/meta"))button("⚠ Excluir esta pasta",()->confirmDeleteFolder(path));
-     for(String key:keys){String child=path.isEmpty()?key:path+"/"+key;button("▣ "+key,()->browseFirebaseFolders(child));}
+    final int from=Math.min(offset,keys.size());
+    final int to=Math.min(from+FIREBASE_PAGE_SIZE,keys.size());
+    final java.util.ArrayList<String> visible=new java.util.ArrayList<>(keys.subList(from,to));
+    final int total=keys.size();
+    runOnUiThread(()->{
+     if(isFinishing()||navigationId!=folderNavigationId)return;
+     msg("Pasta: /"+path+" • "+total+" itens • exibindo "+(total==0?0:from+1)+"–"+to+". Exclusão em lotes de até 500.");
+     if(!path.isEmpty()&&!path.equals("catalogo_unico")&&!path.equals("catalogo_unico/meta")&&!path.equals("__meta")&&!path.equals("admins")&&!path.equals("config"))button("⚠ Excluir esta pasta",()->confirmDeleteFolder(path));
+     for(String key:visible){String child=path.isEmpty()?key:path+"/"+key;button("▣ "+key,()->browseFirebaseFolders(child));}
+     if(from>0)button("← Página anterior",()->browseFirebaseFolders(path,Math.max(0,from-FIREBASE_PAGE_SIZE)));
+     if(to<total)button("Próxima página →",()->browseFirebaseFolders(path,to));
     });
-   }catch(Exception e){msg("Não foi possível listar pastas: "+e.getMessage());}
+   }catch(Exception e){if(navigationId==folderNavigationId)msg("Não foi possível listar pastas: "+e.getMessage());}
   }),e->msg("Falha de autenticação: "+e));
  }
  private void confirmDeleteFolder(String path){
