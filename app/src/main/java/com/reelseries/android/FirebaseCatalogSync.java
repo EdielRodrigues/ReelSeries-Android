@@ -65,12 +65,80 @@ public final class FirebaseCatalogSync {
    request(endpoint(ctx,"items/"+URLEncoder.encode(id,"UTF-8"),token),"PUT",item(c).toString());
   }
  }
+ /** Lists direct child keys without downloading the full catalog. */
+ public static java.util.ArrayList<String> listFolders(Context ctx,String path,String token)throws Exception{
+  validatePath(path);
+  String address=base(ctx)+(path.isEmpty()?"":"/"+path)+".json?auth="+URLEncoder.encode(token,"UTF-8")+(path.equals("catalogo_unico/items")?"&orderBy=%22%24key%22&limitToFirst=100":"&shallow=true");
+  String body=request(address,"GET",null);
+  java.util.ArrayList<String> keys=new java.util.ArrayList<>();
+  if(body.equals("null"))return keys;
+  if(!body.startsWith("{"))return keys;
+  JSONObject obj=new JSONObject(body);java.util.Iterator<String> it=obj.keys();while(it.hasNext())keys.add(it.next());
+  java.util.Collections.sort(keys,String.CASE_INSENSITIVE_ORDER);return keys;
+ }
+ private static void validatePath(String path)throws IOException{
+  if(path==null||path.contains("..")||path.contains("#")||path.contains("$")||path.contains("[")||path.contains("]")||path.contains("\\"))throw new IOException("Caminho Firebase inválido");
+  if(!path.isEmpty())for(String segment:path.split("/",-1))if(segment.isEmpty()||segment.equals(".")||segment.equals(".."))throw new IOException("Caminho Firebase inválido");
+ }
+ /** Delete a chosen subtree in bounded requests, descending into folders first. */
+ public static int deleteFolderBatched(Context ctx,String path,String token,LocalCatalog.Progress progress)throws Exception{
+  validatePath(path);
+  if(path.isEmpty()||path.equals("catalogo_unico")||path.equals("catalogo_unico/meta")||path.startsWith("users")||path.startsWith("admins")||path.startsWith("config"))throw new IOException("Pasta protegida");
+  if(path.equals("catalogo_unico/items"))return deleteCatalogItems(ctx,token,progress);
+  int[] deleted={0};deleteTree(ctx,path,token,progress,deleted,0);return deleted[0];
+ }
+ private static int deleteCatalogItems(Context ctx,String token,LocalCatalog.Progress progress)throws Exception{
+  int total=0;
+  for(int page=0;page<100000;page++){
+   String address=endpoint(ctx,"items",token)+"&orderBy=%22%24key%22&limitToFirst=100";
+   String response=request(address,"GET",null);if(response.equals("null"))break;
+   JSONObject batch=new JSONObject(response);
+   java.util.ArrayList<String> keys=new java.util.ArrayList<>();java.util.Iterator<String> it=batch.keys();while(it.hasNext())keys.add(it.next());
+   if(keys.isEmpty())break;
+   deleteLeafBatch(ctx,"catalogo_unico/items",keys,token);total+=keys.size();progress.update(total);
+  }
+  return total;
+ }
+ private static void deleteTree(Context ctx,String path,String token,LocalCatalog.Progress progress,int[] deleted,int depth)throws Exception{
+  if(depth>32)throw new IOException("Estrutura muito profunda");
+  java.util.ArrayList<String> keys=listFolders(ctx,path,token);
+  if(keys.isEmpty()){
+   request(base(ctx)+"/"+path+".json?auth="+URLEncoder.encode(token,"UTF-8"),"DELETE",null);
+   deleted[0]++;progress.update(deleted[0]);return;
+  }
+  // A batch of leaf children can be deleted with one PATCH without exceeding the request limit.
+  java.util.ArrayList<String> leaves=new java.util.ArrayList<>();
+  for(String key:keys){
+   String child=path+"/"+key;
+   java.util.ArrayList<String> descendants=listFolders(ctx,child,token);
+   if(descendants.isEmpty()){
+    leaves.add(key);
+    if(leaves.size()>=100){deleteLeafBatch(ctx,path,leaves,token);deleted[0]+=leaves.size();progress.update(deleted[0]);leaves.clear();}
+   }else{if(!leaves.isEmpty()){deleteLeafBatch(ctx,path,leaves,token);deleted[0]+=leaves.size();progress.update(deleted[0]);leaves.clear();}deleteTree(ctx,child,token,progress,deleted,depth+1);}
+  }
+  if(!leaves.isEmpty()){deleteLeafBatch(ctx,path,leaves,token);deleted[0]+=leaves.size();progress.update(deleted[0]);}
+ }
+ private static void deleteLeafBatch(Context ctx,String parent,java.util.List<String> keys,String token)throws Exception{
+  JSONObject patch=new JSONObject();for(String key:keys)patch.put(key,JSONObject.NULL);
+  request(base(ctx)+"/"+parent+".json?auth="+URLEncoder.encode(token,"UTF-8"),"PATCH",patch.toString());
+ }
  public static void deleteAll(Context ctx,String token)throws Exception{
-  request(endpoint(ctx,"items",token),"DELETE",null);
+  deleteFolderBatched(ctx,"catalogo_unico/items",token,n->{});
   markChanged(ctx,token);
  }
  public static void deleteOne(Context ctx,String id,String token)throws Exception{
   request(endpoint(ctx,"items/"+URLEncoder.encode(id,"UTF-8"),token),"DELETE",null);
+ }
+ /** Public APK release metadata. APK download itself is hosted outside Firebase RTDB. */
+ public static void publishApk(Context ctx,String token,String apkUrl,int version)throws Exception{
+  if(!apkUrl.startsWith("https://"))throw new IOException("Informe um link HTTPS direto para o APK");
+  if(version<1)throw new IOException("Código da versão inválido");
+  JSONObject info=new JSONObject();info.put("url",apkUrl);info.put("versionCode",version);info.put("publishedAt",System.currentTimeMillis());
+  request(endpoint(ctx,"meta/apk_update",token),"PUT",info.toString());
+ }
+ public static JSONObject apkRelease(Context ctx)throws Exception{
+  String response=request(endpoint(ctx,"meta/apk_update",null),"GET",null);
+  return response.equals("null")?new JSONObject():new JSONObject(response);
  }
  /** Version marker: updated only after an administrator successfully changes cloud data. */
  public static void markChanged(Context ctx,String token)throws Exception{
