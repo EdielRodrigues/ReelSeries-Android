@@ -65,6 +65,10 @@ public final class FirebaseCatalogSync {
    request(endpoint(ctx,"items/"+URLEncoder.encode(id,"UTF-8"),token),"PUT",item(c).toString());
   }
  }
+ public static void deleteAll(Context ctx,String token)throws Exception{
+  request(endpoint(ctx,"items",token),"DELETE",null);
+  markChanged(ctx,token);
+ }
  public static void deleteOne(Context ctx,String id,String token)throws Exception{
   request(endpoint(ctx,"items/"+URLEncoder.encode(id,"UTF-8"),token),"DELETE",null);
  }

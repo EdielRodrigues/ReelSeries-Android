@@ -51,7 +51,7 @@ public class AdminActivity extends Activity {
   screen("Central Administrativa");msg("Painel Premium V19.2  •  SQLite + Firebase Realtime Database");
   tileRow(tile("▤",java.text.NumberFormat.getIntegerInstance(new java.util.Locale("pt","BR")).format(catalog.count()),"Registros locais",()->browseTitles(0)),tile("☷","M3U / M3U8","Importação",()->urlDialog(false)));
   tileRow(tile("▣","Catálogo","Gerenciamento",this::manageTitles),tile("⚙","Sistema","Configurações",this::settingsPanel));
-  section("Catálogo online");button("☁  Enviar catálogo completo ao Firebase",()->syncAll());button("☁  Ver configuração do Firebase",()->msg(FirebaseCatalogSync.configured(this)?"Firebase configurado • sincronização disponível":"Configure firebase_catalog_url em res/values/firebase_catalog.xml"));
+  section("Catálogo online");button("☁  Enviar catálogo completo ao Firebase",()->syncAll());button("↓  Receber atualizações do Firebase",this::downloadCloud);button("☁  Ver configuração do Firebase",()->msg(FirebaseCatalogSync.configured(this)?"Firebase configurado • sincronização disponível":"Configure firebase_catalog_url em res/values/firebase_catalog.xml"));
   section("Importar playlist");
   button("🔗  Adicionar link de playlist M3U",()->urlDialog(false));
   button("⇧  Importar arquivo M3U ou JSON",()->new AlertDialog.Builder(this).setItems(new String[]{"Arquivo M3U","Arquivo JSON"},(d,w)->pick(w==0?M3U:JSON)).show());
@@ -64,10 +64,10 @@ public class AdminActivity extends Activity {
   button("⚙  Configurações e segurança",this::settingsPanel);
  }
  private void settingsPanel(){screen("Configurações do sistema");msg("Reel Séries • Administração local e acesso Firebase");
-  section("Firebase Realtime Database");button("☁  Enviar catálogo completo",()->syncAll());
+  section("Firebase Realtime Database");button("☁  Enviar catálogo completo",()->syncAll());button("↓  Receber atualizações do Firebase",this::downloadCloud);
   section("Importação");button("↻  Atualizar playlist por URL",()->urlDialog(false));button("⇧  Importar arquivo JSON",()->pick(JSON));button("⇧  Importar arquivo M3U",()->pick(M3U));
   section("Diagnósticos");button("⚠  Títulos sem vídeo",()->diagnostic("sem_video",0));button("▧  Títulos sem capa",()->diagnostic("sem_capa",0));button("≡  Categorias vazias",()->diagnostic("sem_categoria",0));
-  section("Backup e segurança");button("⇩  Exportar backup JSON",this::exportCatalog);button("♟  Permissões administrativas",()->new AlertDialog.Builder(this).setTitle("Acesso administrativo").setMessage("O acesso é validado no Firestore em admins/{uid}, com active=true e role=admin.").setPositiveButton("OK",null).show());button("↻  Atualizar painel",this::dashboard);button("Sair da conta",()->{auth.signOut();login();});button("←  Voltar",this::dashboard);button("←  Voltar ao Meu Perfil",()->finish());
+  section("Backup e segurança");button("⇩  Exportar backup JSON",this::exportCatalog);button("↻  Restaurar backup JSON e enviar ao Firebase",()->pick(JSON));button("⚠  Excluir TODO o catálogo do Firebase e deste aparelho",this::confirmDeleteAll);button("♟  Permissões administrativas",()->new AlertDialog.Builder(this).setTitle("Acesso administrativo").setMessage("O acesso é validado no Firestore em admins/{uid}, com active=true e role=admin.").setPositiveButton("OK",null).show());button("↻  Atualizar painel",this::dashboard);button("Sair da conta",()->{auth.signOut();login();});button("←  Voltar",this::dashboard);button("←  Voltar ao Meu Perfil",()->finish());
  }
  private void seedBundledCatalog(){
   worker.execute(()->{
@@ -109,7 +109,7 @@ public class AdminActivity extends Activity {
  private void manageTitles(){screen("Pesquisar títulos locais");EditText q=field("Pesquisar filme, série, episódio ou canal");button("Pesquisar",()->{String term=q.getText().toString().trim();worker.execute(()->{java.util.ArrayList<org.json.JSONObject> items=catalog.search(term,"Todas",60);runOnUiThread(()->{if(isFinishing())return;screen("Resultados da pesquisa");msg(items.size()+" resultados (máximo 60)");for(org.json.JSONObject item:items){String name=item.optString("nome"),cat=item.optString("categoria");button(name+" • "+cat,()->editLocal(item));}button("Nova pesquisa",this::manageTitles);button("Voltar",this::dashboard);});});});button("Voltar",this::dashboard);}
  private void editLocal(org.json.JSONObject item){screen("Editar conteúdo local");EditText name=field("Nome"),cat=field("Categoria"),cover=field("URL da capa"),url=field("URL do vídeo"),syn=field("Sinopse");name.setText(item.optString("nome"));cat.setText(item.optString("categoria"));cover.setText(item.optString("capa"));url.setText(item.optString("url"));syn.setText(item.optString("sinopse"));button("Salvar alterações",()->{String n=name.getText().toString().trim();if(n.isEmpty()){msg("Informe o nome");return;}catalog.save(catalog.getWritableDatabase(),item.optString("id"),n,cat.getText().toString(),cover.getText().toString(),url.getText().toString(),syn.getText().toString(),"","edição local");msg("Alterações salvas. Sincronizando Firebase...");syncOne(item.optString("id"));});button("Excluir título",()->new AlertDialog.Builder(this).setTitle("Excluir este título?").setMessage(item.optString("nome")).setNegativeButton("Cancelar",null).setPositiveButton("Excluir",(d,w)->{catalog.getWritableDatabase().delete("media","id=?",new String[]{item.optString("id")});syncDelete(item.optString("id"));manageTitles();}).show());button("Voltar à pesquisa",this::manageTitles);}
  private void pick(int type){if(busy){msg("Aguarde a importação terminar.");return;}Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("*/*");startActivityForResult(i,type);}
- @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(result!=RESULT_OK||data==null||data.getData()==null)return;if(request==EXPORT){if(authorized)writeBackup(data.getData());return;}if(request!=JSON&&request!=M3U)return;Uri uri=data.getData();new AlertDialog.Builder(this).setTitle("Importar no celular").setMessage("Os dados serão salvos SOMENTE neste aparelho. Continuar?").setNegativeButton("Cancelar",null).setPositiveButton("Importar",(d,w)->importFile(uri,request)).show();}
+ @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(result!=RESULT_OK||data==null||data.getData()==null)return;if(request==EXPORT){if(authorized)writeBackup(data.getData());return;}if(request!=JSON&&request!=M3U)return;Uri uri=data.getData();new AlertDialog.Builder(this).setTitle("Importar no celular").setMessage("O arquivo será importado neste aparelho e enviado ao Firebase. Registros com o mesmo ID serão atualizados. Continuar?").setNegativeButton("Cancelar",null).setPositiveButton("Importar",(d,w)->importFile(uri,request)).show();}
  private void importFile(Uri uri,int type){if(busy||!authorized)return;busy=true;msg("Importando para SQLite local...");worker.execute(()->{try(InputStream in=getContentResolver().openInputStream(uri)){if(in==null)throw new IOException("Arquivo não disponível");String origin=type==JSON?"JSON":"arquivo:"+uri.toString();int n=type==JSON?catalog.importJson(in,c->msg("JSON: "+c+" registros locais...")):catalog.importM3u(in,origin,c->msg("M3U: "+c+" canais locais..."));msg("Importados "+n+" registros. Enviando ao Firebase...");syncOrigin(origin);}catch(Exception e){msg("Falha na importação: "+e.getMessage());}finally{busy=false;}});}
  private void urlDialog(boolean stream){EditText input=new EditText(this);input.setSingleLine(false);input.setHint(stream?"https://servidor/canal.m3u8":"https://servidor/lista.m3u");new AlertDialog.Builder(this).setTitle(stream?"Adicionar stream M3U8":"Importar playlist M3U").setView(input).setNegativeButton("Cancelar",null).setPositiveButton("Continuar",(d,w)->{String url=input.getText().toString().trim();if(!url.startsWith("https://")&&!url.startsWith("http://")){msg("Use uma URL HTTP ou HTTPS válida.");return;}if(stream)streamName(url);else importUrl(url);}).show();}
  private void streamName(String url){EditText name=new EditText(this);name.setHint("Nome do canal");new AlertDialog.Builder(this).setTitle("Nome do stream").setView(name).setNegativeButton("Cancelar",null).setPositiveButton("Salvar",(d,w)->{String n=name.getText().toString().trim();if(n.isEmpty())n="Canal ao vivo";catalog.addStream(n,url);msg("Stream salvo. Sincronizando Firebase...");syncOne("stream_"+LocalCatalog.hash(url));}).show();}
@@ -143,6 +143,39 @@ public class AdminActivity extends Activity {
  }
  private void manual(){screen("Adicionar conteúdo local");EditText id=field("Nome do filme ou canal"),cat=field("Categoria"),cover=field("URL da capa"),url=field("URL do vídeo MP4/M3U8"),syn=field("Sinopse");button("Salvar no celular",()->{String name=id.getText().toString().trim();if(name.isEmpty()){msg("Informe o nome");return;}String link=url.getText().toString().trim();catalog.save(catalog.getWritableDatabase(),"manual_"+LocalCatalog.hash(name+"|"+link),name,cat.getText().toString(),cover.getText().toString(),link,syn.getText().toString(),"","manual");msg("Salvo. Enviando ao Firebase...");syncOne("manual_"+LocalCatalog.hash(name+"|"+link));});button("Voltar",this::dashboard);}
 
+ private void downloadCloud(){
+  if(!authorized||busy)return;
+  busy=true;msg("Buscando atualizações do Firebase...");
+  worker.execute(()->{try{
+   int n=FirebaseCatalogSync.download(this,catalog,c->msg("Recebidos do Firebase: "+c));
+   msg("Atualização concluída: "+n+" registros. Abra novamente o catálogo para visualizar.");
+  }catch(Exception e){msg("Falha ao atualizar: "+e.getMessage());}finally{busy=false;}});
+ }
+ private void confirmDeleteAll(){
+  if(!authorized||busy)return;
+  new AlertDialog.Builder(this).setTitle("Excluir TODO o catálogo?")
+   .setMessage("Esta ação remove todos os títulos do Firebase e deste aparelho. Faça um backup JSON antes. Contas, administradores e configurações não serão apagados.")
+   .setNegativeButton("Cancelar",null).setPositiveButton("Continuar",(d,w)->{
+    EditText confirm=new EditText(this);confirm.setHint("Digite EXCLUIR TUDO");
+    new AlertDialog.Builder(this).setTitle("Confirmação final")
+     .setMessage("Digite EXCLUIR TUDO para confirmar a exclusão permanente.")
+     .setView(confirm).setNegativeButton("Cancelar",null)
+     .setPositiveButton("Excluir",(a,b)->{
+      if(!"EXCLUIR TUDO".equals(confirm.getText().toString().trim())){msg("Exclusão cancelada: confirmação incorreta.");return;}
+      busy=true;msg("Excluindo catálogo do Firebase...");
+      FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{
+       try{
+        FirebaseCatalogSync.deleteAll(this,token);
+        catalog.getWritableDatabase().delete("media",null,null);
+        getSharedPreferences("reel_admin_catalog",MODE_PRIVATE).edit().putBoolean("asset_6760_loaded",true).apply();
+        getSharedPreferences("reel_cloud_cache_v194",MODE_PRIVATE).edit().clear().apply();
+        msg("Catálogo apagado do Firebase e deste aparelho. Outros aparelhos precisam atualizar os dados.");
+       }catch(Exception e){msg("Exclusão não concluída: "+e.getMessage());}
+       finally{busy=false;}
+      }),e->{busy=false;msg("Falha de autenticação: "+e);});
+     }).show();
+   }).show();
+ }
  private void syncAll(){if(!authorized||busy)return;msg("Preparando envio completo ao Firebase...");FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{try{int n=FirebaseCatalogSync.upload(this,catalog,null,token,c->msg("Firebase: "+c+" títulos enviados"));FirebaseCatalogSync.markChanged(this,token);msg("Catálogo único sincronizado: "+n+" registros.");}catch(Exception e){msg("Firebase: "+e.getMessage());}}),e->msg("Autenticação Firebase: "+e));}
  private void syncOrigin(String origin){if(!authorized)return;FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{try{int n=FirebaseCatalogSync.upload(this,catalog,origin,token,c->msg("Firebase: "+c+" registros enviados"));FirebaseCatalogSync.markChanged(this,token);msg("Importação sincronizada no Firebase: "+n+" registros.");}catch(Exception e){msg("Importado localmente, mas não enviado ao Firebase: "+e.getMessage());}}),e->msg("Importado localmente; falha de autenticação Firebase: "+e));}
  private void syncOne(String id){if(!authorized)return;FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{try{FirebaseCatalogSync.uploadOne(this,catalog,id,token);FirebaseCatalogSync.markChanged(this,token);msg("Título sincronizado no Firebase.");}catch(Exception e){msg("Salvo localmente; falha no Firebase: "+e.getMessage());}}),e->msg("Falha Firebase: "+e));}
