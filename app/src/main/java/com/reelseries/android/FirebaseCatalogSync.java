@@ -19,11 +19,8 @@ public final class FirebaseCatalogSync {
   auth.getCurrentUser().getIdToken(false).addOnSuccessListener(t->done.accept(t.getToken())).addOnFailureListener(e->fail.accept(e.getMessage()));
  }
  private static String base(Context ctx)throws IOException {
-  int id=ctx.getResources().getIdentifier("firebase_catalog_url","string",ctx.getPackageName());
-  String url=id==0?"":ctx.getString(id).trim();
-  if(!url.startsWith("https://"))throw new IOException("Configure firebase_catalog_url com a URL HTTPS do Realtime Database");
-  while(url.endsWith("/"))url=url.substring(0,url.length()-1);
-  return url;
+  // Use the confirmed Realtime Database instance; never append .json to the host.
+  return "https://smart-tv-c175a-default-rtdb.firebaseio.com";
  }
  public static boolean configured(Context c){try{base(c);return true;}catch(Exception e){return false;}}
  private static String request(String address,String method,String payload)throws IOException{
@@ -68,11 +65,13 @@ public final class FirebaseCatalogSync {
  /** Lists direct child keys without downloading the full catalog. */
  public static java.util.ArrayList<String> listFolders(Context ctx,String path,String token)throws Exception{
   validatePath(path);
-  String address=base(ctx)+(path.isEmpty()?"":"/"+path)+".json?auth="+URLEncoder.encode(token,"UTF-8")+(path.equals("catalogo_unico/items")?"&orderBy=%22%24key%22&limitToFirst=100":"&shallow=true");
+  String node=path.isEmpty()?"/":"/"+path;
+  // For the root this MUST be /.json, not .com.json.
+  String address=base(ctx)+node+".json?shallow=true"+(token==null||token.isEmpty()?"":"&auth="+URLEncoder.encode(token,"UTF-8"));
   String body=request(address,"GET",null);
   java.util.ArrayList<String> keys=new java.util.ArrayList<>();
   if(body.equals("null"))return keys;
-  if(!body.startsWith("{"))return keys;
+  if(!body.trim().startsWith("{"))return keys;
   JSONObject obj=new JSONObject(body);java.util.Iterator<String> it=obj.keys();while(it.hasNext())keys.add(it.next());
   java.util.Collections.sort(keys,String.CASE_INSENSITIVE_ORDER);return keys;
  }
