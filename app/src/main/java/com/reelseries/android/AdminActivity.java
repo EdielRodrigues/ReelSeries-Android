@@ -87,50 +87,36 @@ public class AdminActivity extends Activity {
  private void diagnostic(String kind,int offset){screen("Diagnóstico • "+kind.replace('_',' '));msg("Consultando registros...");worker.execute(()->{java.util.ArrayList<org.json.JSONObject> items=catalog.diagnostic(kind,offset,50);int total=catalog.diagnosticCount(kind);runOnUiThread(()->{if(isFinishing())return;msg(total+" registros encontrados • página "+(offset/50+1));for(org.json.JSONObject item:items){String label=item.optString("nome")+" • "+item.optString("categoria");button(label,()->editLocal(item));}if(offset>0)button("← Anterior",()->diagnostic(kind,offset-50));if(offset+50<total)button("Próxima →",()->diagnostic(kind,offset+50));button("Voltar ao painel",this::dashboard);});});}
  private void exportCatalog(){
   if(!authorized||busy){msg("Aguarde a operação atual ou entre como administrador.");return;}
-  busy=true;msg("Buscando catálogo completo no Firebase antes do backup...");
+  Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);
+  i.addCategory(Intent.CATEGORY_OPENABLE);
+  i.setType("application/json");
+  i.putExtra(Intent.EXTRA_TITLE,"reelseries-backup.json");
+  try{startActivityForResult(i,EXPORT);}
+  catch(Exception e){msg("Não foi possível abrir a opção Salvar arquivo: "+e.getMessage());}
+ }
+ private void writeBackup(Uri uri){
+  if(busy)return;
+  busy=true;msg("Buscando títulos no Firebase e preparando o backup...");
   worker.execute(()->{
+   String aviso="";
    try{
-    int received=FirebaseCatalogSync.download(this,catalog,c->msg("Recebidos do Firebase: "+c));
-    int total=catalog.count();
-    if(total<=0)throw new IOException("Nenhum título encontrado. Backup vazio bloqueado.");
-    runOnUiThread(()->{
-     busy=false;
-     msg("Firebase sincronizado: "+received+" registros recebidos; "+total+" títulos no backup.");
-     Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);
-     i.addCategory(Intent.CATEGORY_OPENABLE);
-     i.setType("application/json");
-     i.putExtra(Intent.EXTRA_TITLE,"reelseries-backup.json");
-     startActivityForResult(i,EXPORT);
-    });
+    int recebidos=FirebaseCatalogSync.download(this,catalog,c->msg("Recebidos do Firebase: "+c));
+    msg("Firebase: "+recebidos+" registros recebidos.");
    }catch(Exception e){
-    busy=false;
-    msg("Backup cancelado: não foi possível baixar o catálogo do Firebase. "+e.getMessage());
+    aviso=" ATENÇÃO: falha ao sincronizar Firebase ("+e.getMessage()+").";
    }
-  });
- }
- private void writeBackup(Uri uri){if(busy)return;busy=true;msg("Exportando backup para o arquivo selecionado...");worker.execute(()->{try(OutputStream out=getContentResolver().openOutputStream(uri)){if(out==null)throw new IOException("Não foi possível abrir o destino");int n=catalog.exportJson(out,c->msg("Exportados: "+c));msg("Backup concluído: "+n+" títulos. Guarde o arquivo em local seguro.");}catch(Exception e){msg("Erro no backup: "+e.getMessage());}finally{busy=false;}});}
- private void browseTitles(int offset){
-  screen("Todos os filmes, séries e canais");msg("Carregando registros "+(offset+1)+" a "+(offset+50)+"...");
-  worker.execute(()->{
-   java.util.ArrayList<org.json.JSONObject> items=catalog.page(offset,50);
-   int total=catalog.count();
-   runOnUiThread(()->{
-    if(isFinishing())return;
-    msg("Total: "+total+" • Página "+(offset/50+1));
-    for(org.json.JSONObject item:items){
-     String label=item.optString("nome")+" • "+item.optString("categoria");
-     button(label,()->editLocal(item));
+   try{
+    if(catalog.count()<=0)throw new IOException("Não existem títulos locais e o Firebase não foi sincronizado.");
+    int n;
+    try(OutputStream out=getContentResolver().openOutputStream(uri,"w")){
+     if(out==null)throw new IOException("Não foi possível abrir o arquivo escolhido");
+     n=catalog.exportJson(out,c->msg("Exportados: "+c));
     }
-    if(offset>0)button("← Página anterior",()->browseTitles(Math.max(0,offset-50)));
-    if(offset+50<total)button("Próxima página →",()->browseTitles(offset+50));
-    button("Pesquisar títulos",this::manageTitles);
-    button("Voltar ao painel",this::dashboard);
-   });
+    msg("Backup salvo no local escolhido: "+n+" títulos."+aviso);
+   }catch(Exception e){msg("Erro ao salvar backup: "+e.getMessage()+aviso);}
+   finally{busy=false;}
   });
  }
- private void manageTitles(){screen("Pesquisar títulos locais");EditText q=field("Pesquisar filme, série, episódio ou canal");button("Pesquisar",()->{String term=q.getText().toString().trim();worker.execute(()->{java.util.ArrayList<org.json.JSONObject> items=catalog.search(term,"Todas",60);runOnUiThread(()->{if(isFinishing())return;screen("Resultados da pesquisa");msg(items.size()+" resultados (máximo 60)");for(org.json.JSONObject item:items){String name=item.optString("nome"),cat=item.optString("categoria");button(name+" • "+cat,()->editLocal(item));}button("Nova pesquisa",this::manageTitles);button("Voltar",this::dashboard);});});});button("Voltar",this::dashboard);}
- private void editLocal(org.json.JSONObject item){screen("Editar conteúdo local");EditText name=field("Nome"),cat=field("Categoria"),cover=field("URL da capa"),url=field("URL do vídeo"),syn=field("Sinopse");name.setText(item.optString("nome"));cat.setText(item.optString("categoria"));cover.setText(item.optString("capa"));url.setText(item.optString("url"));syn.setText(item.optString("sinopse"));button("Salvar alterações",()->{String n=name.getText().toString().trim();if(n.isEmpty()){msg("Informe o nome");return;}catalog.save(catalog.getWritableDatabase(),item.optString("id"),n,cat.getText().toString(),cover.getText().toString(),url.getText().toString(),syn.getText().toString(),"","edição local");msg("Alterações salvas. Sincronizando Firebase...");syncOne(item.optString("id"));});button("Excluir título",()->new AlertDialog.Builder(this).setTitle("Excluir este título?").setMessage(item.optString("nome")).setNegativeButton("Cancelar",null).setPositiveButton("Excluir",(d,w)->{catalog.getWritableDatabase().delete("media","id=?",new String[]{item.optString("id")});syncDelete(item.optString("id"));manageTitles();}).show());button("Voltar à pesquisa",this::manageTitles);}
- private void pick(int type){if(busy){msg("Aguarde a importação terminar.");return;}Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("*/*");startActivityForResult(i,type);}
  @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(result!=RESULT_OK||data==null||data.getData()==null)return;if(request==EXPORT){if(authorized)writeBackup(data.getData());return;}if(request!=JSON&&request!=M3U)return;Uri uri=data.getData();new AlertDialog.Builder(this).setTitle("Importar no celular").setMessage("O arquivo será importado neste aparelho e enviado ao Firebase. Registros com o mesmo ID serão atualizados. Continuar?").setNegativeButton("Cancelar",null).setPositiveButton("Importar",(d,w)->importFile(uri,request)).show();}
  private void importFile(Uri uri,int type){if(busy||!authorized)return;busy=true;msg("Importando para SQLite local...");worker.execute(()->{try(InputStream in=getContentResolver().openInputStream(uri)){if(in==null)throw new IOException("Arquivo não disponível");String origin=type==JSON?"JSON":"arquivo:"+uri.toString();int n=type==JSON?catalog.importJson(in,c->msg("JSON: "+c+" registros locais...")):catalog.importM3u(in,origin,c->msg("M3U: "+c+" canais locais..."));msg("Importados "+n+" registros. Enviando ao Firebase...");syncOrigin(origin);}catch(Exception e){msg("Falha na importação: "+e.getMessage());}finally{busy=false;}});}
  private void urlDialog(boolean stream){EditText input=new EditText(this);input.setSingleLine(false);input.setHint(stream?"https://servidor/canal.m3u8":"https://servidor/lista.m3u");new AlertDialog.Builder(this).setTitle(stream?"Adicionar stream M3U8":"Importar playlist M3U").setView(input).setNegativeButton("Cancelar",null).setPositiveButton("Continuar",(d,w)->{String url=input.getText().toString().trim();if(!url.startsWith("https://")&&!url.startsWith("http://")){msg("Use uma URL HTTP ou HTTPS válida.");return;}if(stream)streamName(url);else importUrl(url);}).show();}
