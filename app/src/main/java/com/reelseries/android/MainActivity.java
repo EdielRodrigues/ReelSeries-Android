@@ -8,7 +8,7 @@ public class MainActivity extends Activity {
  GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos"; int pageOffset=0; boolean loadingPage=false, endReached=false, bundledPaging=false; TextView moreButton; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
  int bg=Color.rgb(12,16,27), fg=Color.WHITE; final ArrayList<String> catNames=new ArrayList<>();
  int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
- @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(bg);getWindow().setNavigationBarColor(Color.BLACK);
+ @Override public void onCreate(Bundle b){super.onCreate(b);checkApkUpdate();getWindow().setStatusBarColor(bg);getWindow().setNavigationBarColor(Color.BLACK);
  LinearLayout layout=new LinearLayout(this);layout.setOrientation(1);layout.setBackgroundColor(bg);
  LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setPadding(dp(16),dp(10),dp(16),dp(10));layout.addView(header);
  TextView menu=navText("☰",25);header.addView(menu,new LinearLayout.LayoutParams(dp(44),dp(48)));menu.setOnClickListener(v->new AlertDialog.Builder(this).setItems(new String[]{"Início","Filmes","Séries","Canais IPTV","Meu perfil","Administração"},(d,w)->{if(w==4)startActivity(new Intent(this,ProfileActivity.class));else if(w==5)startActivity(new Intent(this,AdminActivity.class));else chooseCategory(w==0?"Todos":w==1?"Filmes":w==2?"Séries":"TV / IPTV");}).show());
@@ -47,6 +47,31 @@ public class MainActivity extends Activity {
  search.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int c,int af){}public void onTextChanged(CharSequence s,int st,int before,int count){if(pending!=null)handler.removeCallbacks(pending);pending=()->resetFeed();handler.postDelayed(pending,220);}public void afterTextChanged(Editable e){}});
  categories.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> p){}public void onItemSelected(android.widget.AdapterView<?> p,View v,int pos,long id){selected=catNames.get(pos);resetFeed();}});
  pool.execute(()->{try{ByteArrayOutputStream out=new ByteArrayOutputStream();InputStream in=getAssets().open("catalogo.json");byte[] buf=new byte[32768];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);in.close();JSONArray arr=new JSONArray(out.toString("UTF-8"));ArrayList<JSONObject> loaded=new ArrayList<>();TreeSet<String> cats=new TreeSet<>();for(int i=0;i<arr.length();i++){JSONObject o=arr.getJSONObject(i);loaded.add(o);cats.add(o.optString("categoria"));}runOnUiThread(()->{all.addAll(loaded);catNames.addAll(cats);if(!loaded.isEmpty()){JSONObject item=loaded.get(0);featured[0]=item;heroTitle.setText(item.optString("nome","REEL SÉRIES"));heroDescription.setText(item.optString("sinopse","Assista a filmes e séries."));loadCover(item.optString("capa"),heroImage);}((ArrayAdapter)categories.getAdapter()).notifyDataSetChanged();resetFeed();});}catch(Exception e){runOnUiThread(()->status.setText("Erro no catálogo: "+e.getMessage()));}});
+ }
+ void checkApkUpdate(){
+  if(!FirebaseCatalogSync.configured(this))return;
+  pool.execute(()->{
+   try{
+    JSONObject release=FirebaseCatalogSync.apkRelease(this);
+    int next=release.optInt("versionCode",0);String link=release.optString("url","");
+    int installed=getPackageManager().getPackageInfo(getPackageName(),0).versionCode;
+    if(next<=installed||!link.startsWith("https://"))return;
+    runOnUiThread(()->{
+     if(isFinishing())return;
+     new AlertDialog.Builder(this).setTitle("Atualização disponível")
+      .setMessage("Nova versão do Reel Séries disponível. A instalação mantém o app existente se a assinatura digital for a mesma. O Android pedirá sua confirmação.")
+      .setNegativeButton("Depois",null).setPositiveButton("Atualizar",(d,w)->{
+       try{android.app.DownloadManager.Request req=new android.app.DownloadManager.Request(android.net.Uri.parse(link));
+        req.setTitle("Atualização Reel Séries");req.setDescription("Toque no download concluído para instalar o APK");
+        req.setMimeType("application/vnd.android.package-archive");
+        req.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+        ((android.app.DownloadManager)getSystemService(DOWNLOAD_SERVICE)).enqueue(req);
+        Toast.makeText(this,"Baixando APK. Abra a notificação para instalar.",Toast.LENGTH_LONG).show();
+       }catch(Exception e){new AlertDialog.Builder(this).setMessage("Falha ao baixar: "+e.getMessage()).setPositiveButton("OK",null).show();}
+      }).show();
+    });
+   }catch(Exception e){android.util.Log.w("ReelSeriesUpdate","Não foi possível consultar atualização",e);}
+  });
  }
  TextView navText(String value,int size){TextView v=new TextView(this);v.setText(value);v.setTextColor(Color.WHITE);v.setTextSize(size);v.setGravity(Gravity.CENTER_VERTICAL);return v;}
  TextView actionText(String value,boolean primary){TextView v=navText(value,14);v.setGravity(Gravity.CENTER);v.setTypeface(null,1);v.setTextColor(primary?0xff11151d:Color.WHITE);android.graphics.drawable.GradientDrawable bg=new android.graphics.drawable.GradientDrawable();bg.setColor(primary?Color.WHITE:0xff30333c);bg.setCornerRadius(dp(12));v.setBackground(bg);return v;}

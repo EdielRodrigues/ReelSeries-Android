@@ -65,9 +65,29 @@ public class AdminActivity extends Activity {
  }
  private void settingsPanel(){screen("Configurações do sistema");msg("Reel Séries • Administração local e acesso Firebase");
   section("Firebase Realtime Database");button("☁  Enviar catálogo completo",()->syncAll());button("↓  Receber atualizações do Firebase",this::downloadCloud);
+  section("Atualização do aplicativo");button("⬆  Publicar link do novo APK no Firebase",this::publishApkDialog);
   section("Importação");button("↻  Atualizar playlist por URL",()->urlDialog(false));button("⇧  Importar arquivo JSON",()->pick(JSON));button("⇧  Importar arquivo M3U",()->pick(M3U));
   section("Diagnósticos");button("⚠  Títulos sem vídeo",()->diagnostic("sem_video",0));button("▧  Títulos sem capa",()->diagnostic("sem_capa",0));button("≡  Categorias vazias",()->diagnostic("sem_categoria",0));
   section("Backup e segurança");button("⇩  Exportar backup JSON",this::exportCatalog);button("↻  Restaurar backup JSON e enviar ao Firebase",()->pick(JSON));button("▣  Escolher pasta do Firebase para excluir",()->browseFirebaseFolders(""));button("⚠  Excluir TODO o catálogo do Firebase e deste aparelho",this::confirmDeleteAll);button("♟  Permissões administrativas",()->new AlertDialog.Builder(this).setTitle("Acesso administrativo").setMessage("O acesso é validado no Firestore em admins/{uid}, com active=true e role=admin.").setPositiveButton("OK",null).show());button("↻  Atualizar painel",this::dashboard);button("Sair da conta",()->{auth.signOut();login();});button("←  Voltar",this::dashboard);button("←  Voltar ao Meu Perfil",()->finish());
+ }
+ private void publishApkDialog(){
+  if(!authorized||busy)return;
+  LinearLayout form=new LinearLayout(this);form.setOrientation(1);form.setPadding(dp(16),dp(8),dp(16),0);
+  EditText url=new EditText(this);url.setSingleLine(true);url.setInputType(17);url.setHint("https://.../reelseries.apk");form.addView(url);
+  EditText version=new EditText(this);version.setInputType(2);version.setHint("versionCode do APK novo (ex.: 100200)");form.addView(version);
+  new AlertDialog.Builder(this).setTitle("Publicar atualização do Reel Séries")
+   .setMessage("Informe o link HTTPS direto do APK já compilado. O novo APK precisa ter a mesma assinatura e um versionCode maior. Não cole link de página do GitHub Actions.")
+   .setView(form).setNegativeButton("Cancelar",null).setPositiveButton("Publicar",(d,w)->{
+    String link=url.getText().toString().trim();int code;
+    try{code=Integer.parseInt(version.getText().toString().trim());}catch(Exception e){msg("Informe um versionCode numérico");return;}
+    if(!link.startsWith("https://")){msg("Informe um link HTTPS");return;}
+    busy=true;msg("Publicando atualização no Firebase...");
+    FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{
+     try{FirebaseCatalogSync.publishApk(this,token,link,code);msg("Atualização publicada. Os usuários verão o aviso ao abrir o aplicativo.");}
+     catch(Exception e){msg("Erro ao publicar atualização: "+e.getMessage());}
+     finally{busy=false;}
+    }),e->{busy=false;msg("Erro de autenticação: "+e);});
+   }).show();
  }
  private void seedBundledCatalog(){
   worker.execute(()->{
