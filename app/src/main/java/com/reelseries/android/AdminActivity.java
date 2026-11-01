@@ -85,7 +85,29 @@ public class AdminActivity extends Activity {
  }
  private void statistics(){screen("Estatísticas avançadas");msg("Analisando banco local...");worker.execute(()->{java.util.LinkedHashMap<String,Integer> data=catalog.statistics();runOnUiThread(()->{if(isFinishing())return;msg("Informações do catálogo armazenado neste aparelho.");for(java.util.Map.Entry<String,Integer> e:data.entrySet())root.addView(panelText(e.getKey()+"  •  "+e.getValue(),18));button("Ver títulos sem vídeo",()->diagnostic("sem_video",0));button("Ver títulos sem capa",()->diagnostic("sem_capa",0));button("Voltar ao painel",this::dashboard);});});}
  private void diagnostic(String kind,int offset){screen("Diagnóstico • "+kind.replace('_',' '));msg("Consultando registros...");worker.execute(()->{java.util.ArrayList<org.json.JSONObject> items=catalog.diagnostic(kind,offset,50);int total=catalog.diagnosticCount(kind);runOnUiThread(()->{if(isFinishing())return;msg(total+" registros encontrados • página "+(offset/50+1));for(org.json.JSONObject item:items){String label=item.optString("nome")+" • "+item.optString("categoria");button(label,()->editLocal(item));}if(offset>0)button("← Anterior",()->diagnostic(kind,offset-50));if(offset+50<total)button("Próxima →",()->diagnostic(kind,offset+50));button("Voltar ao painel",this::dashboard);});});}
- private void exportCatalog(){if(busy){msg("Aguarde a operação atual.");return;}Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/json");i.putExtra(Intent.EXTRA_TITLE,"reelseries-backup.json");startActivityForResult(i,EXPORT);}
+ private void exportCatalog(){
+  if(!authorized||busy){msg("Aguarde a operação atual ou entre como administrador.");return;}
+  busy=true;msg("Buscando catálogo completo no Firebase antes do backup...");
+  worker.execute(()->{
+   try{
+    int received=FirebaseCatalogSync.download(this,catalog,c->msg("Recebidos do Firebase: "+c));
+    int total=catalog.count();
+    if(total<=0)throw new IOException("Nenhum título encontrado. Backup vazio bloqueado.");
+    runOnUiThread(()->{
+     busy=false;
+     msg("Firebase sincronizado: "+received+" registros recebidos; "+total+" títulos no backup.");
+     Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);
+     i.addCategory(Intent.CATEGORY_OPENABLE);
+     i.setType("application/json");
+     i.putExtra(Intent.EXTRA_TITLE,"reelseries-backup.json");
+     startActivityForResult(i,EXPORT);
+    });
+   }catch(Exception e){
+    busy=false;
+    msg("Backup cancelado: não foi possível baixar o catálogo do Firebase. "+e.getMessage());
+   }
+  });
+ }
  private void writeBackup(Uri uri){if(busy)return;busy=true;msg("Exportando backup para o arquivo selecionado...");worker.execute(()->{try(OutputStream out=getContentResolver().openOutputStream(uri)){if(out==null)throw new IOException("Não foi possível abrir o destino");int n=catalog.exportJson(out,c->msg("Exportados: "+c));msg("Backup concluído: "+n+" títulos. Guarde o arquivo em local seguro.");}catch(Exception e){msg("Erro no backup: "+e.getMessage());}finally{busy=false;}});}
  private void browseTitles(int offset){
   screen("Todos os filmes, séries e canais");msg("Carregando registros "+(offset+1)+" a "+(offset+50)+"...");
