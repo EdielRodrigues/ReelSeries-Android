@@ -67,7 +67,7 @@ public class AdminActivity extends Activity {
   section("Firebase Realtime Database");button("☁  Enviar catálogo completo",()->syncAll());button("↓  Receber atualizações do Firebase",this::downloadCloud);
   section("Importação");button("↻  Atualizar playlist por URL",()->urlDialog(false));button("⇧  Importar arquivo JSON",()->pick(JSON));button("⇧  Importar arquivo M3U",()->pick(M3U));
   section("Diagnósticos");button("⚠  Títulos sem vídeo",()->diagnostic("sem_video",0));button("▧  Títulos sem capa",()->diagnostic("sem_capa",0));button("≡  Categorias vazias",()->diagnostic("sem_categoria",0));
-  section("Backup e segurança");button("⇩  Exportar backup JSON",this::exportCatalog);button("↻  Restaurar backup JSON e enviar ao Firebase",()->pick(JSON));button("⚠  Excluir TODO o catálogo do Firebase e deste aparelho",this::confirmDeleteAll);button("♟  Permissões administrativas",()->new AlertDialog.Builder(this).setTitle("Acesso administrativo").setMessage("O acesso é validado no Firestore em admins/{uid}, com active=true e role=admin.").setPositiveButton("OK",null).show());button("↻  Atualizar painel",this::dashboard);button("Sair da conta",()->{auth.signOut();login();});button("←  Voltar",this::dashboard);button("←  Voltar ao Meu Perfil",()->finish());
+  section("Backup e segurança");button("⇩  Exportar backup JSON",this::exportCatalog);button("↻  Restaurar backup JSON e enviar ao Firebase",()->pick(JSON));button("▣  Escolher pasta do Firebase para excluir",()->browseFirebaseFolders(""));button("⚠  Excluir TODO o catálogo do Firebase e deste aparelho",this::confirmDeleteAll);button("♟  Permissões administrativas",()->new AlertDialog.Builder(this).setTitle("Acesso administrativo").setMessage("O acesso é validado no Firestore em admins/{uid}, com active=true e role=admin.").setPositiveButton("OK",null).show());button("↻  Atualizar painel",this::dashboard);button("Sair da conta",()->{auth.signOut();login();});button("←  Voltar",this::dashboard);button("←  Voltar ao Meu Perfil",()->finish());
  }
  private void seedBundledCatalog(){
   worker.execute(()->{
@@ -180,6 +180,38 @@ public class AdminActivity extends Activity {
    int n=FirebaseCatalogSync.download(this,catalog,c->msg("Recebidos do Firebase: "+c));
    msg("Atualização concluída: "+n+" registros. Abra novamente o catálogo para visualizar.");
   }catch(Exception e){msg("Falha ao atualizar: "+e.getMessage());}finally{busy=false;}});
+ }
+ private void browseFirebaseFolders(String path){
+  if(!authorized||busy)return;
+  screen("Escolher pasta do Firebase");msg("Carregando pastas... " +(path.isEmpty()?"Raiz":path));
+  button("← Voltar",()->{int n=path.lastIndexOf('/');if(path.isEmpty())settingsPanel();else browseFirebaseFolders(n<0?"":path.substring(0,n));});
+  FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{
+   try{
+    java.util.ArrayList<String> keys=FirebaseCatalogSync.listFolders(this,path,token);
+    runOnUiThread(()->{if(isFinishing())return;
+     msg("Pasta: /"+path+" • "+keys.size()+" itens. Escolha uma pasta para abrir.");
+     if(!path.isEmpty()&&!path.equals("catalogo_unico")&&!path.equals("catalogo_unico/meta"))button("⚠ Excluir esta pasta",()->confirmDeleteFolder(path));
+     for(String key:keys){String child=path.isEmpty()?key:path+"/"+key;button("▣ "+key,()->browseFirebaseFolders(child));}
+    });
+   }catch(Exception e){msg("Não foi possível listar pastas: "+e.getMessage());}
+  }),e->msg("Falha de autenticação: "+e));
+ }
+ private void confirmDeleteFolder(String path){
+  if(!authorized||busy)return;
+  if(path.isEmpty()||path.equals("catalogo_unico")||path.equals("catalogo_unico/meta")){msg("Pasta protegida");return;}
+  EditText confirm=new EditText(this);confirm.setHint("Digite EXCLUIR");
+  new AlertDialog.Builder(this).setTitle("Excluir pasta do Firebase?")
+   .setMessage("Pasta: /"+path+"\n\nEsta exclusão é permanente e ocorre em lotes. Faça backup antes. Digite EXCLUIR para confirmar.")
+   .setView(confirm).setNegativeButton("Cancelar",null).setPositiveButton("Excluir",(d,w)->{
+    if(!"EXCLUIR".equals(confirm.getText().toString().trim())){msg("Confirmação incorreta. Nada excluído.");return;}
+    busy=true;msg("Iniciando exclusão da pasta /"+path);
+    FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{
+     try{int count=FirebaseCatalogSync.deleteFolderBatched(this,path,token,n->msg("Excluindo "+path+": "+n+" registros..."));
+      if(path.equals("catalogo_unico/items")){catalog.getWritableDatabase().delete("media",null,null);getSharedPreferences("reel_admin_catalog",MODE_PRIVATE).edit().putBoolean("asset_6760_loaded",true).apply();}
+      FirebaseCatalogSync.markChanged(this,token);msg("Exclusão concluída: /"+path+" ("+count+" registros). Atualize outros aparelhos.");
+     }catch(Exception e){msg("Exclusão parcial ou falhou: "+e.getMessage());}finally{busy=false;}
+    }),e->{busy=false;msg("Autenticação: "+e);});
+   }).show();
  }
  private void confirmDeleteAll(){
   if(!authorized||busy)return;
