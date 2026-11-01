@@ -66,9 +66,33 @@ public class AdminActivity extends Activity {
  private void settingsPanel(){screen("Configurações do sistema");msg("Reel Séries • Administração local e acesso Firebase");
   section("Firebase Realtime Database");button("☁  Enviar catálogo completo",()->syncAll());button("↓  Receber atualizações do Firebase",this::downloadCloud);
   section("Atualização do aplicativo");button("⬆  Publicar link do novo APK no Firebase",this::publishApkDialog);
+  section("TMDB • capas e informações");button("✦  Configurar servidor TMDB",this::configureTmdbServer);button("✦  Verificar capas faltantes (simulação)",()->startTmdbSync(true));button("✦  Atualizar capas e metadados ausentes",()->startTmdbSync(false));
   section("Importação");button("↻  Atualizar playlist por URL",()->urlDialog(false));button("⇧  Importar arquivo JSON",()->pick(JSON));button("⇧  Importar arquivo M3U",()->pick(M3U));
   section("Diagnósticos");button("⚠  Títulos sem vídeo",()->diagnostic("sem_video",0));button("▧  Títulos sem capa",()->diagnostic("sem_capa",0));button("≡  Categorias vazias",()->diagnostic("sem_categoria",0));
   section("Backup e segurança");button("⇩  Exportar backup JSON",this::exportCatalog);button("↻  Restaurar backup JSON e enviar ao Firebase",()->pick(JSON));button("▣  Escolher pasta do Firebase para excluir",()->browseFirebaseFolders(""));button("⚠  Excluir TODO o catálogo do Firebase e deste aparelho",this::confirmDeleteAll);button("♟  Permissões administrativas",()->new AlertDialog.Builder(this).setTitle("Acesso administrativo").setMessage("O acesso é validado no Firestore em admins/{uid}, com active=true e role=admin.").setPositiveButton("OK",null).show());button("↻  Atualizar painel",this::dashboard);button("Sair da conta",()->{auth.signOut();login();});button("←  Voltar",this::dashboard);button("←  Voltar ao Meu Perfil",()->finish());
+ }
+ private void configureTmdbServer(){
+  EditText f=new EditText(this);f.setSingleLine(true);f.setHint("https://seu-servico.onrender.com");f.setText(getPreferences(MODE_PRIVATE).getString("tmdb_server",""));
+  new AlertDialog.Builder(this).setTitle("Servidor TMDB no Render").setMessage("Informe apenas a URL do servidor. A chave TMDB fica no Render, nunca no APK.").setView(f).setNegativeButton("Cancelar",null).setPositiveButton("Salvar",(d,w)->{String u=f.getText().toString().trim().replaceAll("/+$","");if(!u.startsWith("https://")){msg("Use HTTPS");return;}getPreferences(MODE_PRIVATE).edit().putString("tmdb_server",u).apply();msg("Servidor TMDB configurado");}).show();
+ }
+ private void startTmdbSync(boolean dryRun){
+  if(!authorized||busy)return;String server=getPreferences(MODE_PRIVATE).getString("tmdb_server","");if(!server.startsWith("https://")){msg("Configure primeiro a URL do servidor TMDB");return;}
+  new AlertDialog.Builder(this).setTitle(dryRun?"Simular sincronização TMDB":"Atualizar campos ausentes pelo TMDB")
+   .setMessage("O servidor verificará as pastas do Firebase. Capas existentes e links de vídeo não serão alterados. Faça backup antes de executar.")
+   .setNegativeButton("Cancelar",null).setPositiveButton("Continuar",(d,w)->{
+    busy=true;msg("Autenticando...");FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{
+     try{
+      java.net.HttpURLConnection c=(java.net.HttpURLConnection)new java.net.URL(server+"/sync").openConnection();c.setConnectTimeout(20000);c.setReadTimeout(20000);c.setRequestMethod("POST");c.setDoOutput(true);c.setRequestProperty("Authorization","Bearer "+token);c.setRequestProperty("Content-Type","application/json");
+      byte[] payload=("{\"dryRun\":"+dryRun+",\"metadata\":true}").getBytes("UTF-8");try(java.io.OutputStream out=c.getOutputStream()){out.write(payload);}int statusCode=c.getResponseCode();java.io.InputStream in=statusCode<300?c.getInputStream():c.getErrorStream();byte[] bytes=new byte[8192];int n=in.read(bytes);String response=n>0?new String(bytes,0,n,"UTF-8"):"";c.disconnect();
+      if(statusCode>=300)throw new IOException("HTTP "+statusCode+" "+response);
+      org.json.JSONObject job=new org.json.JSONObject(response);String id=job.getString("id");msg("Sincronização iniciada: "+id);
+      for(int i=0;i<3600;i++){
+       Thread.sleep(2500);java.net.HttpURLConnection poll=(java.net.HttpURLConnection)new java.net.URL(server+"/sync/"+id).openConnection();poll.setConnectTimeout(15000);poll.setReadTimeout(15000);poll.setRequestProperty("Authorization","Bearer "+token);
+       try(java.io.InputStream stream=poll.getInputStream()){java.io.ByteArrayOutputStream buffer=new java.io.ByteArrayOutputStream();byte[] b=new byte[2048];int m;while((m=stream.read(b))!=-1)buffer.write(b,0,m);org.json.JSONObject j=new org.json.JSONObject(buffer.toString("UTF-8"));String state=j.optString("state");msg((dryRun?"Simulação":"TMDB")+": "+j.optInt("scanned")+" vistos, "+j.optInt("updated")+" atualizados, "+j.optInt("unmatched")+" sem correspondência, "+j.optInt("errors")+" erros • "+j.optString("path")+" • "+state);if(!"running".equals(state))break;}finally{poll.disconnect();}
+      }
+     }catch(Exception e){msg("TMDB: "+e.getMessage());}finally{busy=false;}
+    }),(error)->{busy=false;msg(error);});
+   }).show();
  }
  private void publishApkDialog(){
   if(!authorized||busy)return;
