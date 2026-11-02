@@ -75,11 +75,11 @@ public class DetailsActivity extends Activity {
      seasons.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,labels));
      seasons.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> p){}public void onItemSelected(android.widget.AdapterView<?> p,View v,int index,long id){episodes.removeAllViews();episodeRefreshers.clear();if(index>=keys.size())return;for(java.util.Map.Entry<Integer,JSONObject> entry:grouped.get(keys.get(index)).entrySet()){
       JSONObject item=entry.getValue();String epUrl=item.optString("url",item.optString("video",""));
-      LinearLayout line=new LinearLayout(this);line.setGravity(Gravity.CENTER_VERTICAL);line.setBackgroundColor(0xff1d2838);
+      LinearLayout line=new LinearLayout(DetailsActivity.this);line.setGravity(Gravity.CENTER_VERTICAL);line.setBackgroundColor(0xff1d2838);
       TextView row=text("▶  Episódio "+entry.getKey(),16,0xffffffff);row.setPadding(dp(14),dp(12),dp(4),dp(12));line.addView(row,new LinearLayout.LayoutParams(0,-2,1));
       TextView mark=text("",12,0xff9ca3af);mark.setGravity(Gravity.CENTER);mark.setPadding(dp(7),dp(10),dp(7),dp(10));line.addView(mark,new LinearLayout.LayoutParams(dp(110),-2));
-      Runnable refresh=()->{boolean done=EpisodeWatchState.isWatched(this,epUrl);mark.setText(done?"✓ Assistido":"○ Marcar");mark.setTextColor(done?0xff63e6b0:0xffcbd5e1);};episodeRefreshers.add(refresh);refresh.run();
-      mark.setOnClickListener(v->{EpisodeWatchState.setWatched(this,epUrl,!EpisodeWatchState.isWatched(this,epUrl));refresh.run();});
+      Runnable refresh=()->{boolean done=EpisodeWatchState.isWatched(DetailsActivity.this,epUrl);mark.setText(done?"✓ Assistido":"○ Marcar");mark.setTextColor(done?0xff63e6b0:0xffcbd5e1);};episodeRefreshers.add(refresh);refresh.run();
+      mark.setOnClickListener(clickedView->{EpisodeWatchState.setWatched(DetailsActivity.this,epUrl,!EpisodeWatchState.isWatched(DetailsActivity.this,epUrl));refresh.run();});
       LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(6);episodes.addView(line,lp);row.setOnClickListener(x->{String url=item.optString("url",item.optString("video",""));if(!url.startsWith("http")){new AlertDialog.Builder(DetailsActivity.this).setMessage("Vídeo indisponível neste episódio.").setPositiveButton("OK",null).show();return;}Intent intent=new Intent(DetailsActivity.this,PlayerActivity.class);intent.putExtra("url",url);intent.putExtra("name",SeriesHelper.name(item)+" • T"+keys.get(index)+" E"+entry.getKey());intent.putExtra("capa",item.optString("capa",selected.optString("capa","")));
       attachPlaylist(intent,url);
       startActivity(intent);});
