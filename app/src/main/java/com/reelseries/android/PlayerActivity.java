@@ -56,6 +56,7 @@ public class PlayerActivity extends Activity {
       if(tvTime!=null)tvTime.setText(formatTime(pos)+" / "+formatTime(duration));
       if(tvEpisodeTitle!=null)tvEpisodeTitle.setText(displayName);
       if(pos>=5000 && pos%10000<1100)saveHistory(pos,duration);
+      if(duration>=60000 && pos>=duration*95/100)EpisodeWatchState.setWatched(this,url,true);
       if(duration>10000 && pos>=duration-1700 && r.isPlaying() && playlist!=null && playlistIndex>=0 && playlistIndex+1<playlist.length() && lastAutoIndex!=playlistIndex){
        nearEndChecks++;if(nearEndChecks>=2){lastAutoIndex=playlistIndex;nearEndChecks=0;markComplete();playNext();}
       }else if(duration>0&&pos<duration-3000){nearEndChecks=0;}
@@ -111,9 +112,10 @@ public class PlayerActivity extends Activity {
  }
  private void saveProgress(){if(player==null||url==null)return;long duration=player.getDuration(),pos=player.getCurrentPosition();if(pos<0)return;
   if(duration>0&&pos>=duration-15000){markComplete();return;}
+  if(duration>=60000 && pos>=duration*95/100)EpisodeWatchState.setWatched(this,url,true);
   saveHistory(pos,duration);
   getSharedPreferences("reel_playback_progress",MODE_PRIVATE).edit().putLong(progressKey(url),pos).apply();}
- private void markComplete(){if(url!=null){getSharedPreferences("reel_playback_progress",MODE_PRIVATE).edit().remove(progressKey(url)).apply();getSharedPreferences("reel_continue_history",MODE_PRIVATE).edit().remove(progressKey(url)).apply();}}
+ private void markComplete(){if(url!=null){EpisodeWatchState.setWatched(this,url,true);getSharedPreferences("reel_playback_progress",MODE_PRIVATE).edit().remove(progressKey(url)).apply();getSharedPreferences("reel_continue_history",MODE_PRIVATE).edit().remove(progressKey(url)).apply();}}
  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(0xff000000);getWindow().setNavigationBarColor(0xff000000);getWindow().getDecorView().setSystemUiVisibility(4|1024|4096);setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
  displayName=getIntent().getStringExtra("name");if(displayName==null)displayName="Reel Séries";posterUrl=getIntent().getStringExtra("capa");if(posterUrl==null)posterUrl="";
  url=getIntent().getStringExtra("url");if(url==null||!url.startsWith("http")){finish();return;}
