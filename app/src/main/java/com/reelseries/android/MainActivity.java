@@ -8,6 +8,13 @@ public class MainActivity extends Activity {
  GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos"; int pageOffset=0; boolean loadingPage=false, endReached=false, bundledPaging=false; TextView moreButton; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
  final ArrayList<JSONObject> heroItems=new ArrayList<>(); int heroIndex=0; boolean heroActive=false;
  Runnable heroTicker; android.widget.LinearLayout heroDots;
+ // Ten different highlights every 30 minutes; six-second slide interval.
+ static final long HERO_ROTATE_MS=30L*60L*1000L;
+ static final long HERO_SLIDE_MS=6000L;
+ final ArrayList<JSONObject> heroCandidates=new ArrayList<>();
+ long heroBatchStart=0L;
+ Runnable heroBatchTicker;
+
  int bg=Color.rgb(12,16,27), fg=Color.WHITE; final ArrayList<String> catNames=new ArrayList<>();
  int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
  @Override public void onCreate(Bundle b){super.onCreate(b);checkApkUpdate();getWindow().setStatusBarColor(bg);getWindow().setNavigationBarColor(Color.BLACK);
@@ -31,7 +38,8 @@ public class MainActivity extends Activity {
  final JSONObject[] featured={null};watch.setOnClickListener(v->{if(featured[0]!=null){String url=featured[0].optString("url",featured[0].optString("video"));if(url.startsWith("http")){Intent i=new Intent(this,PlayerActivity.class);i.putExtra("url",url);i.putExtra("name",featured[0].optString("nome"));startActivity(i);}else details(featured[0]);}});more.setOnClickListener(v->{if(featured[0]!=null)details(featured[0]);});
  heroDots=new LinearLayout(this);heroDots.setGravity(Gravity.CENTER);heroDots.setPadding(0,dp(8),0,dp(2));content.addView(heroDots,new LinearLayout.LayoutParams(-1,dp(25)));
  final float[] touchX={0};hero.setOnTouchListener((v,e)->{if(e.getAction()==android.view.MotionEvent.ACTION_DOWN){touchX[0]=e.getX();return true;}if(e.getAction()==android.view.MotionEvent.ACTION_UP){float delta=e.getX()-touchX[0];if(Math.abs(delta)>dp(45)){showHero((heroIndex+(delta<0?1:-1)+heroItems.size())%Math.max(1,heroItems.size()),heroImage,heroTitle,heroDescription,featured);return true;}return false;}return true;});
- heroTicker=new Runnable(){public void run(){if(heroActive&&heroItems.size()>1){showHero((heroIndex+1)%heroItems.size(),heroImage,heroTitle,heroDescription,featured);}}};
+ heroTicker=new Runnable(){public void run(){if(!heroActive)return;refreshHeroBatchIfNeeded(heroImage,heroTitle,heroDescription,featured);if(heroItems.size()>1){showHero((heroIndex+1)%heroItems.size(),heroImage,heroTitle,heroDescription,featured);}}};
+ heroBatchTicker=new Runnable(){public void run(){if(!heroActive)return;refreshHeroBatchIfNeeded(heroImage,heroTitle,heroDescription,featured);scheduleHeroBatchCheck();}};
  TextView categoryTitle=navText("CATÁLOGO COMPLETO",12);categoryTitle.setTextColor(0xffff455e);categoryTitle.setTypeface(null,1);categoryTitle.setPadding(0,dp(20),0,dp(8));content.addView(categoryTitle);
  LinearLayout chips=new LinearLayout(this);chips.setOrientation(0);HorizontalScrollView chipScroll=new HorizontalScrollView(this);chipScroll.setHorizontalScrollBarEnabled(false);chipScroll.addView(chips);content.addView(chipScroll);
  String[] labels={"Todos","Filmes","Séries","TV / IPTV"};String[] queries={"Todos","Filmes","Séries","TV / IPTV"};for(int k=0;k<labels.length;k++){final String q=queries[k];TextView chip=actionText(labels[k],false);chip.setPadding(dp(16),dp(10),dp(16),dp(10));LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,dp(43));cp.rightMargin=dp(7);chips.addView(chip,cp);chip.setOnClickListener(v->chooseCategory(q));}
@@ -51,7 +59,21 @@ public class MainActivity extends Activity {
  grid.setOnItemClickListener((a,v,p,id)->details(shown.get(p)));
  search.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int c,int af){}public void onTextChanged(CharSequence s,int st,int before,int count){if(pending!=null)handler.removeCallbacks(pending);pending=()->resetFeed();handler.postDelayed(pending,220);}public void afterTextChanged(Editable e){}});
  categories.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> p){}public void onItemSelected(android.widget.AdapterView<?> p,View v,int pos,long id){selected=catNames.get(pos);resetFeed();}});
- pool.execute(()->{try{ByteArrayOutputStream out=new ByteArrayOutputStream();InputStream in=getAssets().open("catalogo.json");byte[] buf=new byte[32768];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);in.close();JSONArray arr=new JSONArray(out.toString("UTF-8"));ArrayList<JSONObject> loaded=new ArrayList<>();TreeSet<String> cats=new TreeSet<>();for(int i=0;i<arr.length();i++){JSONObject o=arr.getJSONObject(i);loaded.add(o);cats.add(o.optString("categoria"));}runOnUiThread(()->{all.addAll(loaded);catNames.addAll(cats);if(!loaded.isEmpty()){java.util.HashSet<String> used=new java.util.HashSet<>();for(JSONObject item:loaded){String name=item.optString("nome","").trim();String cover=item.optString("backdrop",item.optString("capa",""));if(!cover.startsWith("http"))cover=item.optString("capa","");String cat=item.optString("categoria","").toLowerCase(java.util.Locale.ROOT);if(name.length()>2&&cover.startsWith("http")&&!cat.contains("episod")&&!cat.contains("canal")&&!cat.contains("iptv")&&used.add(name.toLowerCase(java.util.Locale.ROOT))){heroItems.add(item);if(heroItems.size()>=10)break;}}if(heroItems.isEmpty())heroItems.add(loaded.get(0));showHero(0,heroImage,heroTitle,heroDescription,featured);heroActive=true;handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,6000);}((ArrayAdapter)categories.getAdapter()).notifyDataSetChanged();resetFeed();});}catch(Exception e){runOnUiThread(()->status.setText("Erro no catálogo: "+e.getMessage()));}});
+ pool.execute(()->{try{ByteArrayOutputStream out=new ByteArrayOutputStream();InputStream in=getAssets().open("catalogo.json");byte[] buf=new byte[32768];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);in.close();JSONArray arr=new JSONArray(out.toString("UTF-8"));ArrayList<JSONObject> loaded=new ArrayList<>();TreeSet<String> cats=new TreeSet<>();for(int i=0;i<arr.length();i++){JSONObject o=arr.getJSONObject(i);loaded.add(o);cats.add(o.optString("categoria"));}runOnUiThread(()->{all.addAll(loaded);catNames.addAll(cats);if(!loaded.isEmpty()){
+  heroCandidates.clear();java.util.HashSet<String> used=new java.util.HashSet<>();
+  for(JSONObject item:loaded){
+   String name=item.optString("nome","").trim();
+   String cover=item.optString("backdrop","");if(!cover.startsWith("https://"))cover=item.optString("capa","");
+   String cat=item.optString("categoria","").toLowerCase(java.util.Locale.ROOT);
+   if(name.length()>2&&cover.startsWith("https://")&&!cat.contains("episod")&&!cat.contains("canal")&&!cat.contains("iptv")&&used.add(name.toLowerCase(java.util.Locale.ROOT)))heroCandidates.add(item);
+  }
+  if(heroCandidates.isEmpty())heroCandidates.add(loaded.get(0));
+  heroBatchStart=0L;
+  refreshHeroBatchIfNeeded(heroImage,heroTitle,heroDescription,featured);
+  heroActive=true;
+  if(heroTicker!=null){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,HERO_SLIDE_MS);}
+  scheduleHeroBatchCheck();
+ }((ArrayAdapter)categories.getAdapter()).notifyDataSetChanged();resetFeed();});}catch(Exception e){runOnUiThread(()->status.setText("Erro no catálogo: "+e.getMessage()));}});
  }
  void showHero(int index,ImageView picture,TextView title,TextView description,JSONObject[] selectedItem){
   if(heroItems.isEmpty())return;
@@ -62,9 +84,30 @@ public class MainActivity extends Activity {
    picture.animate().alpha(1f).setDuration(380).start();
   }).start();
   if(heroDots!=null){heroDots.removeAllViews();for(int i=0;i<heroItems.size();i++){final int n=i;TextView dot=navText(i==heroIndex?"●":"●",11);dot.setGravity(Gravity.CENTER);dot.setTextColor(i==heroIndex?0xffff5269:0xff677084);heroDots.addView(dot,new LinearLayout.LayoutParams(dp(23),dp(20)));dot.setOnClickListener(v->showHero(n,picture,title,description,selectedItem));}}
-  if(heroTicker!=null&&heroActive){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,6000);}
+  if(heroTicker!=null&&heroActive){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,HERO_SLIDE_MS);}
  }
- @Override protected void onPause(){super.onPause();heroActive=false;if(heroTicker!=null)handler.removeCallbacks(heroTicker);}
+ // Rotate by batches without repeating titles until the candidate list is exhausted.
+ void refreshHeroBatchIfNeeded(ImageView picture,TextView title,TextView description,JSONObject[] selectedItem){
+  if(heroCandidates.isEmpty())return;
+  long now=System.currentTimeMillis();
+  if(heroBatchStart>0 && now>=heroBatchStart && now-heroBatchStart<HERO_ROTATE_MS)return;
+  long batchNumber=now/HERO_ROTATE_MS;
+  int count=heroCandidates.size(), batchSize=Math.min(10,count);
+  long cycle=(batchNumber*10L)/count;
+  int offset=(int)((batchNumber*10L)%count);
+  ArrayList<Integer> order=new ArrayList<>();for(int i=0;i<count;i++)order.add(i);
+  java.util.Collections.shuffle(order,new java.util.Random(0x5245454cL+cycle));
+  heroItems.clear();for(int i=0;i<batchSize;i++)heroItems.add(heroCandidates.get(order.get((offset+i)%count)));
+  heroBatchStart=batchNumber*HERO_ROTATE_MS;
+  showHero(0,picture,title,description,selectedItem);
+ }
+ void scheduleHeroBatchCheck(){
+  if(heroBatchTicker==null)return;
+  handler.removeCallbacks(heroBatchTicker);
+  long next=((System.currentTimeMillis()/HERO_ROTATE_MS)+1)*HERO_ROTATE_MS;
+  handler.postDelayed(heroBatchTicker,Math.max(1000L,next-System.currentTimeMillis()+200L));
+ }
+ @Override protected void onPause(){super.onPause();heroActive=false;if(heroTicker!=null)handler.removeCallbacks(heroTicker);if(heroBatchTicker!=null)handler.removeCallbacks(heroBatchTicker);}
  void checkApkUpdate(){
   if(!FirebaseCatalogSync.configured(this))return;
   pool.execute(()->{
@@ -197,9 +240,9 @@ public class MainActivity extends Activity {
   android.view.ViewGroup.LayoutParams params=grid.getLayoutParams();
   if(params!=null&&params.height!=height){params.height=height;grid.setLayoutParams(params);}
  }
- @Override protected void onResume(){super.onResume();heroActive=true;if(heroTicker!=null){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,6000);}if(search!=null){String wanted=getIntent().getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){getIntent().removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}resetFeed();if(FirebaseCatalogSync.configured(this))loadCloud();}}
+ @Override protected void onResume(){super.onResume();heroActive=true;if(heroBatchTicker!=null){handler.removeCallbacks(heroBatchTicker);handler.post(heroBatchTicker);}if(heroTicker!=null){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,HERO_SLIDE_MS);}if(search!=null){String wanted=getIntent().getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){getIntent().removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}resetFeed();if(FirebaseCatalogSync.configured(this))loadCloud();}}
  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(search!=null){String wanted=intent.getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){intent.removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}}}
  void details(JSONObject o){Intent i=new Intent(this,DetailsActivity.class);i.putExtra("item",o.toString());startActivity(i);}
  void loadCover(String url,ImageView image){if(url.equals(image.getTag()) && image.getDrawable()!=null)return;image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag()))image.setImageBitmap(bitmap);});}}catch(Exception ignored){}});}
- @Override protected void onDestroy(){pool.shutdownNow();super.onDestroy();}
+ @Override protected void onDestroy(){if(heroTicker!=null)handler.removeCallbacks(heroTicker);if(heroBatchTicker!=null)handler.removeCallbacks(heroBatchTicker);pool.shutdownNow();super.onDestroy();}
 }
