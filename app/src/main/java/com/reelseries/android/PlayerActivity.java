@@ -247,6 +247,22 @@ public class PlayerActivity extends Activity {
   episodesRow.addView(previousEpisode,new LinearLayout.LayoutParams(0,dpCast(48),1));
   episodesRow.addView(nextEpisode,new LinearLayout.LayoutParams(0,dpCast(48),1));
   layout.addView(episodesRow);
+  // Controle de volume da televisão conectada (Google Cast, 0 a 100%).
+  LinearLayout volumeRow=new LinearLayout(this);volumeRow.setOrientation(LinearLayout.HORIZONTAL);volumeRow.setGravity(Gravity.CENTER_VERTICAL);
+  TextView volumeLabel=new TextView(this);volumeLabel.setText("Volume da TV");volumeLabel.setTextSize(13);
+  volumeRow.addView(volumeLabel,new LinearLayout.LayoutParams(dpCast(105),-2));
+  SeekBar tvVolume=new SeekBar(this);tvVolume.setMax(100);
+  volumeRow.addView(tvVolume,new LinearLayout.LayoutParams(0,dpCast(48),1));
+  TextView volumeValue=new TextView(this);volumeValue.setMinWidth(dpCast(42));volumeValue.setGravity(Gravity.RIGHT);volumeRow.addView(volumeValue);
+  try{int current=(int)Math.round(session.getVolume()*100.0);current=Math.max(0,Math.min(100,current));tvVolume.setProgress(current);volumeValue.setText(current+"%");}
+  catch(Exception ignored){tvVolume.setProgress(50);volumeValue.setText("50%");}
+  tvVolume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+   public void onStartTrackingTouch(SeekBar b){}
+   public void onProgressChanged(SeekBar b,int value,boolean fromUser){volumeValue.setText(value+"%");if(fromUser){try{session.setVolume(value/100.0);}catch(Exception e){Toast.makeText(PlayerActivity.this,"A TV não aceitou o ajuste de volume",Toast.LENGTH_SHORT).show();}}}
+   public void onStopTrackingTouch(SeekBar b){}
+  });
+  layout.addView(volumeRow);
+
   previousEpisode.setEnabled(playlist!=null&&playlistIndex>0);
   nextEpisode.setEnabled(playlist!=null&&playlistIndex>=0&&playlistIndex+1<playlist.length());
   if(playlist==null||playlistIndex<0){TextView hint=new TextView(this);hint.setText("Para trocar episódios, abra a série pela lista de temporadas e aguarde o carregamento dos episódios.");hint.setTextSize(12);layout.addView(hint);}

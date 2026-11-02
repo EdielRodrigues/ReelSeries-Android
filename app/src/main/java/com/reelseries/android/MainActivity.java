@@ -19,8 +19,8 @@ public class MainActivity extends Activity {
  TextView profile=navText("♟",25);header.addView(profile,new LinearLayout.LayoutParams(dp(44),dp(48)));profile.setOnClickListener(v->startActivity(new Intent(this,ProfileActivity.class)));
  TextView admin=navText("⚙",25);header.addView(admin,new LinearLayout.LayoutParams(dp(44),dp(48)));admin.setOnClickListener(v->startActivity(new Intent(this,AdminActivity.class)));
  ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);layout.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));LinearLayout content=new LinearLayout(this);content.setOrientation(1);content.setPadding(dp(15),0,dp(15),dp(14));scroll.addView(content);
- android.widget.FrameLayout hero=new android.widget.FrameLayout(this);hero.setBackgroundColor(0xff24202a);content.addView(hero,new LinearLayout.LayoutParams(-1,dp(365)));
- ImageView heroImage=new ImageView(this);heroImage.setScaleType(ImageView.ScaleType.CENTER_CROP);hero.addView(heroImage,new android.widget.FrameLayout.LayoutParams(-1,-1));
+ android.widget.FrameLayout hero=new android.widget.FrameLayout(this);hero.setBackgroundColor(0xff24202a);content.addView(hero,new LinearLayout.LayoutParams(-1,dp(405)));
+ ImageView heroImage=new ImageView(this);heroImage.setScaleType(ImageView.ScaleType.FIT_CENTER);hero.addView(heroImage,new android.widget.FrameLayout.LayoutParams(-1,-1));
  View overlay=new View(this);overlay.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0x150b101b,0x660b101b,0xff0b101b}));hero.addView(overlay,new android.widget.FrameLayout.LayoutParams(-1,-1));
  LinearLayout heroCopy=new LinearLayout(this);heroCopy.setOrientation(1);heroCopy.setPadding(dp(14),dp(10),dp(14),dp(16));android.widget.FrameLayout.LayoutParams hp=new android.widget.FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);hero.addView(heroCopy,hp);
  TextView badge=navText("DESTAQUE  •  REEL SÉRIES",13);badge.setTypeface(null,1);badge.setTextColor(0xffff455e);heroCopy.addView(badge);
