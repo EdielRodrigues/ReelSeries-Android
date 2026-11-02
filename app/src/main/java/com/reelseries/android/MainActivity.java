@@ -31,7 +31,7 @@ public class MainActivity extends Activity {
  final JSONObject[] featured={null};watch.setOnClickListener(v->{if(featured[0]!=null){String url=featured[0].optString("url",featured[0].optString("video"));if(url.startsWith("http")){Intent i=new Intent(this,PlayerActivity.class);i.putExtra("url",url);i.putExtra("name",featured[0].optString("nome"));startActivity(i);}else details(featured[0]);}});more.setOnClickListener(v->{if(featured[0]!=null)details(featured[0]);});
  heroDots=new LinearLayout(this);heroDots.setGravity(Gravity.CENTER);heroDots.setPadding(0,dp(8),0,dp(2));content.addView(heroDots,new LinearLayout.LayoutParams(-1,dp(25)));
  final float[] touchX={0};hero.setOnTouchListener((v,e)->{if(e.getAction()==android.view.MotionEvent.ACTION_DOWN){touchX[0]=e.getX();return true;}if(e.getAction()==android.view.MotionEvent.ACTION_UP){float delta=e.getX()-touchX[0];if(Math.abs(delta)>dp(45)){showHero((heroIndex+(delta<0?1:-1)+heroItems.size())%Math.max(1,heroItems.size()),heroImage,heroTitle,heroDescription,featured);return true;}return false;}return true;});
- heroTicker=new Runnable(){public void run(){if(heroActive&&heroItems.size()>1){showHero((heroIndex+1)%heroItems.size(),heroImage,heroTitle,heroDescription,featured);handler.postDelayed(this,6000);}}};
+ heroTicker=new Runnable(){public void run(){if(heroActive&&heroItems.size()>1){showHero((heroIndex+1)%heroItems.size(),heroImage,heroTitle,heroDescription,featured);}}};
  TextView categoryTitle=navText("CATÁLOGO COMPLETO",12);categoryTitle.setTextColor(0xffff455e);categoryTitle.setTypeface(null,1);categoryTitle.setPadding(0,dp(20),0,dp(8));content.addView(categoryTitle);
  LinearLayout chips=new LinearLayout(this);chips.setOrientation(0);HorizontalScrollView chipScroll=new HorizontalScrollView(this);chipScroll.setHorizontalScrollBarEnabled(false);chipScroll.addView(chips);content.addView(chipScroll);
  String[] labels={"Todos","Filmes","Séries","TV / IPTV"};String[] queries={"Todos","Filmes","Séries","TV / IPTV"};for(int k=0;k<labels.length;k++){final String q=queries[k];TextView chip=actionText(labels[k],false);chip.setPadding(dp(16),dp(10),dp(16),dp(10));LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,dp(43));cp.rightMargin=dp(7);chips.addView(chip,cp);chip.setOnClickListener(v->chooseCategory(q));}
@@ -65,7 +65,6 @@ public class MainActivity extends Activity {
   if(heroTicker!=null&&heroActive){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,6000);}
  }
  @Override protected void onPause(){super.onPause();heroActive=false;if(heroTicker!=null)handler.removeCallbacks(heroTicker);}
- @Override protected void onResume(){super.onResume();heroActive=true;if(heroTicker!=null){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,6000);}}
  void checkApkUpdate(){
   if(!FirebaseCatalogSync.configured(this))return;
   pool.execute(()->{
@@ -198,7 +197,7 @@ public class MainActivity extends Activity {
   android.view.ViewGroup.LayoutParams params=grid.getLayoutParams();
   if(params!=null&&params.height!=height){params.height=height;grid.setLayoutParams(params);}
  }
- @Override protected void onResume(){super.onResume();if(search!=null){String wanted=getIntent().getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){getIntent().removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}resetFeed();if(FirebaseCatalogSync.configured(this))loadCloud();}}
+ @Override protected void onResume(){super.onResume();heroActive=true;if(heroTicker!=null){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,6000);}if(search!=null){String wanted=getIntent().getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){getIntent().removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}resetFeed();if(FirebaseCatalogSync.configured(this))loadCloud();}}
  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(search!=null){String wanted=intent.getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){intent.removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}}}
  void details(JSONObject o){Intent i=new Intent(this,DetailsActivity.class);i.putExtra("item",o.toString());startActivity(i);}
  void loadCover(String url,ImageView image){if(url.equals(image.getTag()) && image.getDrawable()!=null)return;image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag()))image.setImageBitmap(bitmap);});}}catch(Exception ignored){}});}
