@@ -1,6 +1,6 @@
 package com.reelseries.android;
 import android.app.*;import android.os.*;import android.content.*;import android.content.pm.ActivityInfo;import android.view.*;import android.widget.*;
-import androidx.media3.common.*;import androidx.media3.exoplayer.ExoPlayer;import androidx.media3.exoplayer.DefaultLoadControl;import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;import androidx.media3.datasource.DefaultHttpDataSource;import androidx.media3.ui.PlayerView;import androidx.media3.ui.AspectRatioFrameLayout;
+import androidx.media3.common.*;import androidx.media3.exoplayer.ExoPlayer;import androidx.media3.exoplayer.DefaultLoadControl;import androidx.media3.exoplayer.DefaultRenderersFactory;import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;import androidx.media3.datasource.DefaultHttpDataSource;import androidx.media3.ui.PlayerView;import androidx.media3.ui.AspectRatioFrameLayout;
 import com.google.android.gms.cast.MediaInfo;
 import com.google.android.gms.cast.MediaMetadata;
 import com.google.android.gms.cast.framework.CastButtonFactory;
@@ -137,14 +137,14 @@ public class PlayerActivity extends Activity {
  private String progressKey(String link){try{byte[] hash=MessageDigest.getInstance("SHA-256").digest(link.getBytes(StandardCharsets.UTF_8));StringBuilder b=new StringBuilder("p_");for(int i=0;i<12;i++)b.append(String.format(java.util.Locale.US,"%02x",hash[i]&255));return b.toString();}catch(Exception e){return "p_"+link.hashCode();}}
  private long stored(String link){return getSharedPreferences("reel_playback_progress",MODE_PRIVATE).getLong(progressKey(link),0);}
  private void saveHistory(long pos,long duration){
-  if(url==null||!url.startsWith("http"))return;
+  if(url==null||!url.startsWith("http")||isXtreamLive(url)||pos<2000)return;
   try{android.content.SharedPreferences pref=getSharedPreferences("reel_continue_history",MODE_PRIVATE);
    org.json.JSONObject entry=new org.json.JSONObject();entry.put("url",url);entry.put("name",displayName);entry.put("position",pos);entry.put("duration",duration);entry.put("updated",System.currentTimeMillis());entry.put("capa",posterUrl==null?"":posterUrl);
    String key=progressKey(url);if(duration>0&&pos>=duration-15000)pref.edit().remove(key).apply();
-   else if(pos>=5000)pref.edit().putString(key,entry.toString()).apply();
+   else pref.edit().putString(key,entry.toString()).commit();
   }catch(Exception ignored){}
  }
- private void saveProgress(){if(player==null||url==null||isXtreamLive(url))return;long duration=player.getDuration(),pos=player.getCurrentPosition();if(pos<0)return;
+ private void saveProgress(){if(player==null||url==null||isXtreamLive(url))return;long duration=player.getDuration(),pos=player.getCurrentPosition();if(pos<2000)return;
   if(duration>0&&pos>=duration-15000){markComplete();return;}
   if(duration>=60000 && pos>=duration*95/100)EpisodeWatchState.setWatched(PlayerActivity.this,url,true);
   saveHistory(pos,duration);
@@ -401,9 +401,15 @@ player=newConfiguredPlayer();playerView.setPlayer(player);
   // Streams ao vivo precisam de latência controlada; 60s de buffer podem
   // aumentar atraso e não corrigem um fluxo que deixa de entregar pacotes.
   boolean live=isXtreamLive(url);
+  // FHD: preserva a resolucao entregue pelo servidor, sem limite artificial de 720p.
+  // Um pouco mais de margem reduz rebuffering em canais 1080p, sem latencia excessiva.
   DefaultLoadControl buffers=new DefaultLoadControl.Builder()
-   .setBufferDurationsMs(live?8000:15000,live?35000:60000,live?2500:1500,live?4500:3500).build();
-  return new ExoPlayer.Builder(this).setMediaSourceFactory(media).setLoadControl(buffers).build();
+   .setBufferDurationsMs(live?12000:15000,live?45000:60000,live?3500:1500,live?6000:3500).build();
+  // Alguns dispositivos precisam alternar para outro decoder quando o primeiro falha.
+  DefaultRenderersFactory renderers=new DefaultRenderersFactory(this)
+   .setEnableDecoderFallback(true);
+  return new ExoPlayer.Builder(this,renderers)
+   .setMediaSourceFactory(media).setLoadControl(buffers).build();
  }
  private boolean isXtreamLive(String link){return link!=null&&link.toLowerCase(java.util.Locale.ROOT).matches("https?://[^?#]+/live/[^?#]+\\.(ts|m3u8)([?#].*)?");}
  private String playbackDiagnostic(PlaybackException error){
