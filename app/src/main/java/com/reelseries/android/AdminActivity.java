@@ -54,7 +54,8 @@ public class AdminActivity extends Activity {
   section("Catálogo online");button("☁  Enviar catálogo completo ao Firebase",()->syncAll());button("↓  Receber atualizações do Firebase",this::downloadCloud);button("☁  Ver configuração do Firebase",()->msg(FirebaseCatalogSync.configured(this)?"Firebase configurado • sincronização disponível":"Configure firebase_catalog_url em res/values/firebase_catalog.xml"));
   section("Importar playlist");
   button("🔗  Adicionar link de playlist M3U",()->urlDialog(false));
-  button("📺  Adicionar IPTV por link get.php",this::iptvLinkDialog);
+  button("📺  Adicionar IPTV (servidor, login e senha)",this::iptvCredentialsDialog);
+  button("🔗  Adicionar IPTV por link get.php",this::iptvLinkDialog);
   button("⇧  Importar arquivo M3U ou JSON",()->new AlertDialog.Builder(this).setItems(new String[]{"Arquivo M3U","Arquivo JSON"},(d,w)->pick(w==0?M3U:JSON)).show());
   button("▶  Adicionar transmissão M3U8",()->urlDialog(true));
   section("Gerenciamento rápido");
@@ -187,6 +188,23 @@ public class AdminActivity extends Activity {
  @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(result!=RESULT_OK||data==null||data.getData()==null)return;if(request==EXPORT){if(authorized)writeBackup(data.getData());return;}if(request!=JSON&&request!=M3U)return;Uri uri=data.getData();new AlertDialog.Builder(this).setTitle("Importar no celular").setMessage("O arquivo será importado neste aparelho e enviado ao Firebase. Registros com o mesmo ID serão atualizados. Continuar?").setNegativeButton("Cancelar",null).setPositiveButton("Importar",(d,w)->importFile(uri,request)).show();}
  private void importFile(Uri uri,int type){if(busy||!authorized)return;busy=true;msg("Importando para SQLite local...");worker.execute(()->{try(InputStream in=getContentResolver().openInputStream(uri)){if(in==null)throw new IOException("Arquivo não disponível");String origin=type==JSON?"JSON":"arquivo:"+uri.toString();int n=type==JSON?catalog.importJson(in,c->msg("JSON: "+c+" registros locais...")):catalog.importM3u(in,origin,c->msg("M3U: "+c+" canais locais..."));msg("Importados "+n+" registros. Enviando ao Firebase...");syncOrigin(origin);}catch(Exception e){msg("Falha na importação: "+e.getMessage());}finally{busy=false;}});}
  private void urlDialog(boolean stream){EditText input=new EditText(this);input.setSingleLine(false);input.setHint(stream?"https://servidor/canal.m3u8":"https://servidor/lista.m3u");new AlertDialog.Builder(this).setTitle(stream?"Adicionar stream M3U8":"Importar playlist M3U").setView(input).setNegativeButton("Cancelar",null).setPositiveButton("Continuar",(d,w)->{String url=input.getText().toString().trim();if(!url.startsWith("https://")&&!url.startsWith("http://")){msg("Use uma URL HTTP ou HTTPS válida.");return;}if(stream)streamName(url);else importUrl(url);}).show();}
+ private void iptvCredentialsDialog(){
+  if(!authorized){msg("Entre como administrador para importar IPTV.");return;}
+  LinearLayout form=new LinearLayout(this);form.setOrientation(1);form.setPadding(dp(18),dp(8),dp(18),dp(8));
+  EditText server=new EditText(this);server.setSingleLine(true);server.setHint("Servidor: http://exemplo.com:porta");server.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_URI);form.addView(server);
+  EditText username=new EditText(this);username.setSingleLine(true);username.setHint("Login IPTV");form.addView(username);
+  EditText password=new EditText(this);password.setSingleLine(true);password.setHint("Senha IPTV");password.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);form.addView(password);
+  TextView hint=panelText("Use o endereço de servidor fornecido pelo serviço. HTTP envia as credenciais sem criptografia; prefira HTTPS quando disponível. O aplicativo não grava estes dados no código.",13);form.addView(hint);
+  new AlertDialog.Builder(this).setTitle("Acesso IPTV Xtream / M3U").setView(form).setNegativeButton("Cancelar",null).setPositiveButton("Importar",(d,w)->{
+   try{
+    String host=server.getText().toString().trim();String user=username.getText().toString().trim();String pass=password.getText().toString();
+    URL u=new URL(host);String scheme=u.getProtocol();if((!scheme.equalsIgnoreCase("http")&&!scheme.equalsIgnoreCase("https"))||u.getHost().isEmpty()||user.isEmpty()||pass.isEmpty())throw new Exception();
+    String base=scheme+"://"+u.getAuthority();
+    String link=base+"/get.php?username="+java.net.URLEncoder.encode(user,"UTF-8")+"&password="+java.net.URLEncoder.encode(pass,"UTF-8")+"&type=m3u_plus&output=ts";
+    importUrl(link);
+   }catch(Exception ex){msg("Preencha o endereço completo (http:// ou https://), login e senha válidos.");}
+  }).show();
+ }
  private void iptvLinkDialog(){
   if(!authorized){msg("Entre como administrador para importar IPTV.");return;}
   EditText input=new EditText(this);input.setSingleLine(false);input.setMinLines(3);input.setHint("https://servidor/get.php?username=...&password=...&type=m3u_plus&output=ts");
