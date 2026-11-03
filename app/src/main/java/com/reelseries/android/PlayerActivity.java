@@ -22,22 +22,40 @@ import android.webkit.WebSettings;
 import android.net.Uri;
 import org.json.*;import java.security.MessageDigest;import java.nio.charset.StandardCharsets;
 public class PlayerActivity extends Activity {
- private int liveReconnects=0;private long liveLastProgressAt=0;private long liveLastPosition=-1;private boolean liveWatchActive=false;
+ // TV ao vivo: evita reiniciar continuamente streams que estão apenas acumulando buffer.
+ private int liveReconnects=0;
+ private long liveLastProgressAt=0, liveLastPosition=-1, liveStableSince=0;
+ private boolean liveWatchActive=false;
  private final Runnable liveWatchdog=new Runnable(){@Override public void run(){
   if(!liveWatchActive||player==null||isFinishing())return;
   if(!isXtreamLive(url)||casting){handler.postDelayed(this,5000);return;}
-  long now=android.os.SystemClock.elapsedRealtime();int state=player.getPlaybackState();long position=player.getCurrentPosition();
-  if(state==Player.STATE_READY&&player.isPlaying()&&position>liveLastPosition+250){liveLastPosition=position;liveLastProgressAt=now;liveReconnects=0;}
-  else if(state==Player.STATE_READY&&position>liveLastPosition+250){liveLastPosition=position;liveLastProgressAt=now;}
-  if(state!=Player.STATE_IDLE&&now-liveLastProgressAt>22000){
-   if(liveReconnects<3){liveReconnects++;liveLastProgressAt=now;liveLastPosition=-1;
-    android.widget.Toast.makeText(PlayerActivity.this,"Reconectando TV ao vivo ("+liveReconnects+"/3)...",android.widget.Toast.LENGTH_SHORT).show();
-    player.seekToDefaultPosition();player.prepare();player.setPlayWhenReady(true);
-   }else{liveWatchActive=false;new AlertDialog.Builder(PlayerActivity.this).setTitle("TV ao vivo sem resposta").setMessage("A transmissão parou de enviar vídeo mesmo após 3 tentativas de reconexão. Verifique o canal ou a conexão com o servidor.").setPositiveButton("Voltar",(d,w)->finish()).show();return;}
+  long now=android.os.SystemClock.elapsedRealtime();
+  int state=player.getPlaybackState();long position=player.getCurrentPosition();
+  if(state==Player.STATE_READY&&player.isPlaying()&&position>liveLastPosition+500){
+   liveLastPosition=position;liveLastProgressAt=now;
+   if(liveStableSince==0)liveStableSince=now;
+   // Só zera tentativas após reprodução realmente estável.
+   if(now-liveStableSince>30000)liveReconnects=0;
+  }else if(state==Player.STATE_READY&&position>liveLastPosition+500){
+   liveLastPosition=position;liveLastProgressAt=now;
+  }else if(state!=Player.STATE_READY){liveStableSince=0;}
+  // Aguarda tempo suficiente para a origem entregar dados antes de tentar recuperar.
+  if(state!=Player.STATE_IDLE&&now-liveLastProgressAt>45000){
+   if(liveReconnects<2){
+    liveReconnects++;liveLastProgressAt=now;liveLastPosition=-1;liveStableSince=0;
+    android.widget.Toast.makeText(PlayerActivity.this,"Recuperando TV ao vivo ("+liveReconnects+"/2)...",android.widget.Toast.LENGTH_SHORT).show();
+    // Reabre a conexão de rede em vez de apenas seekTo em um stream ao vivo.
+    player.stop();player.prepare();player.setPlayWhenReady(true);
+   }else{
+    liveWatchActive=false;
+    new AlertDialog.Builder(PlayerActivity.this).setTitle("Canal sem resposta")
+     .setMessage("A transmissão ficou sem avançar mesmo após as tentativas de recuperação. Teste outro canal ou confira a origem IPTV.")
+     .setPositiveButton("Voltar",(d,w)->finish()).show();return;
+   }
   }
   handler.postDelayed(this,5000);
  }};
- private void beginLiveWatch(){handler.removeCallbacks(liveWatchdog);liveWatchActive=isXtreamLive(url);liveReconnects=0;liveLastPosition=-1;liveLastProgressAt=android.os.SystemClock.elapsedRealtime();if(liveWatchActive)handler.postDelayed(liveWatchdog,5000);}
+ private void beginLiveWatch(){handler.removeCallbacks(liveWatchdog);liveWatchActive=isXtreamLive(url);liveReconnects=0;liveLastPosition=-1;liveStableSince=0;liveLastProgressAt=android.os.SystemClock.elapsedRealtime();if(liveWatchActive)handler.postDelayed(liveWatchdog,5000);}
  private boolean liveHlsRetried=false;private String liveFirstError="";private ExoPlayer player;private PlayerView playerView;private FrameLayout playerRoot;private WebView webPlayer;private boolean usingWeb=false;private long savedPosition=0;private String url;private boolean playWhenReady=true;
  private CastContext castContext;
  private String castError="";
@@ -380,8 +398,11 @@ player=newConfiguredPlayer();playerView.setPlayer(player);
    .setConnectTimeoutMs(20000)
    .setReadTimeoutMs(20000);
   DefaultMediaSourceFactory media=new DefaultMediaSourceFactory(http);
+  // Streams ao vivo precisam de latência controlada; 60s de buffer podem
+  // aumentar atraso e não corrigem um fluxo que deixa de entregar pacotes.
+  boolean live=isXtreamLive(url);
   DefaultLoadControl buffers=new DefaultLoadControl.Builder()
-   .setBufferDurationsMs(15000,60000,1500,3500).build();
+   .setBufferDurationsMs(live?3000:15000,live?18000:60000,live?1000:1500,live?2000:3500).build();
   return new ExoPlayer.Builder(this).setMediaSourceFactory(media).setLoadControl(buffers).build();
  }
  private boolean isXtreamLive(String link){return link!=null&&link.toLowerCase(java.util.Locale.ROOT).matches("https?://[^?#]+/live/[^?#]+\\.(ts|m3u8)([?#].*)?");}
