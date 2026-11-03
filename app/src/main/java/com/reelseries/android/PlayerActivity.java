@@ -1,6 +1,6 @@
 package com.reelseries.android;
 import android.app.*;import android.os.*;import android.content.*;import android.content.pm.ActivityInfo;import android.view.*;import android.widget.*;
-import androidx.media3.common.*;import androidx.media3.exoplayer.ExoPlayer;import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;import androidx.media3.datasource.DefaultHttpDataSource;import androidx.media3.ui.PlayerView;import androidx.media3.ui.AspectRatioFrameLayout;
+import androidx.media3.common.*;import androidx.media3.exoplayer.ExoPlayer;import androidx.media3.exoplayer.DefaultLoadControl;import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;import androidx.media3.datasource.DefaultHttpDataSource;import androidx.media3.ui.PlayerView;import androidx.media3.ui.AspectRatioFrameLayout;
 import com.google.android.gms.cast.MediaInfo;
 import com.google.android.gms.cast.MediaMetadata;
 import com.google.android.gms.cast.framework.CastButtonFactory;
@@ -22,6 +22,22 @@ import android.webkit.WebSettings;
 import android.net.Uri;
 import org.json.*;import java.security.MessageDigest;import java.nio.charset.StandardCharsets;
 public class PlayerActivity extends Activity {
+ private int liveReconnects=0;private long liveLastProgressAt=0;private long liveLastPosition=-1;private boolean liveWatchActive=false;
+ private final Runnable liveWatchdog=new Runnable(){@Override public void run(){
+  if(!liveWatchActive||player==null||isFinishing())return;
+  if(!isXtreamLive(url)||casting){handler.postDelayed(this,5000);return;}
+  long now=android.os.SystemClock.elapsedRealtime();int state=player.getPlaybackState();long position=player.getCurrentPosition();
+  if(state==Player.STATE_READY&&player.isPlaying()&&position>liveLastPosition+250){liveLastPosition=position;liveLastProgressAt=now;liveReconnects=0;}
+  else if(state==Player.STATE_READY&&position>liveLastPosition+250){liveLastPosition=position;liveLastProgressAt=now;}
+  if(state!=Player.STATE_IDLE&&now-liveLastProgressAt>22000){
+   if(liveReconnects<3){liveReconnects++;liveLastProgressAt=now;liveLastPosition=-1;
+    android.widget.Toast.makeText(PlayerActivity.this,"Reconectando TV ao vivo ("+liveReconnects+"/3)...",android.widget.Toast.LENGTH_SHORT).show();
+    player.seekToDefaultPosition();player.prepare();player.setPlayWhenReady(true);
+   }else{liveWatchActive=false;new AlertDialog.Builder(PlayerActivity.this).setTitle("TV ao vivo sem resposta").setMessage("A transmissão parou de enviar vídeo mesmo após 3 tentativas de reconexão. Verifique o canal ou a conexão com o servidor.").setPositiveButton("Voltar",(d,w)->finish()).show();return;}
+  }
+  handler.postDelayed(this,5000);
+ }};
+ private void beginLiveWatch(){handler.removeCallbacks(liveWatchdog);liveWatchActive=isXtreamLive(url);liveReconnects=0;liveLastPosition=-1;liveLastProgressAt=android.os.SystemClock.elapsedRealtime();if(liveWatchActive)handler.postDelayed(liveWatchdog,5000);}
  private boolean liveHlsRetried=false;private String liveFirstError="";private ExoPlayer player;private PlayerView playerView;private FrameLayout playerRoot;private WebView webPlayer;private boolean usingWeb=false;private long savedPosition=0;private String url;private boolean playWhenReady=true;
  private CastContext castContext;
  private String castError="";
@@ -329,10 +345,10 @@ if(webPlayer!=null){webPlayer.onResume();return;}
 if(isWebLink(url)){openWebPlayer(url);return;}
 player=newConfiguredPlayer();playerView.setPlayer(player);
  player.addListener(new Player.Listener(){
-  @Override public void onPlayerError(PlaybackException e){if(isFinishing())return; if(retryLiveAsHls(e))return; new AlertDialog.Builder(PlayerActivity.this).setTitle(isXtreamLive(url)?"Não foi possível reproduzir TV ao vivo":"Não foi possível reproduzir").setMessage(playbackDiagnostic(e)).setPositiveButton("Voltar",(d,w)->finish()).show();}
+  @Override public void onPlayerError(PlaybackException e){if(isFinishing())return; if(retryLiveAsHls(e)){beginLiveWatch();return;}liveWatchActive=false;handler.removeCallbacks(liveWatchdog); new AlertDialog.Builder(PlayerActivity.this).setTitle(isXtreamLive(url)?"Não foi possível reproduzir TV ao vivo":"Não foi possível reproduzir").setMessage(playbackDiagnostic(e)).setPositiveButton("Voltar",(d,w)->finish()).show();}
   @Override public void onPlaybackStateChanged(int state){if(state==Player.STATE_ENDED&&!casting){markComplete();playNext();}}
  });
- player.setMediaItem(buildMediaItem(url));player.prepare();long pos=restored?savedPosition:Math.max(stored(url),getIntent().getLongExtra("resume_position",0));player.seekTo(Math.max(0,pos));player.setPlayWhenReady(!casting&&playWhenReady);handler.postDelayed(periodic,5000);
+ player.setMediaItem(buildMediaItem(url));player.prepare();long pos=restored?savedPosition:Math.max(stored(url),getIntent().getLongExtra("resume_position",0));player.seekTo(Math.max(0,pos));player.setPlayWhenReady(!casting&&playWhenReady);beginLiveWatch();handler.postDelayed(periodic,5000);
  }
  private boolean playEpisodeAt(int index){
   if(playlist==null||index<0||index>=playlist.length())return false;
@@ -364,7 +380,9 @@ player=newConfiguredPlayer();playerView.setPlayer(player);
    .setConnectTimeoutMs(20000)
    .setReadTimeoutMs(20000);
   DefaultMediaSourceFactory media=new DefaultMediaSourceFactory(http);
-  return new ExoPlayer.Builder(this).setMediaSourceFactory(media).build();
+  DefaultLoadControl buffers=new DefaultLoadControl.Builder()
+   .setBufferDurationsMs(15000,60000,1500,3500).build();
+  return new ExoPlayer.Builder(this).setMediaSourceFactory(media).setLoadControl(buffers).build();
  }
  private boolean isXtreamLive(String link){return link!=null&&link.toLowerCase(java.util.Locale.ROOT).matches("https?://[^?#]+/live/[^?#]+\\.(ts|m3u8)([?#].*)?");}
  private String playbackDiagnostic(PlaybackException error){
@@ -432,7 +450,7 @@ player=newConfiguredPlayer();playerView.setPlayer(player);
   }
   usingWeb=false;if(playerView!=null)playerView.setVisibility(View.VISIBLE);
  }
- @Override protected void onStop(){if(casting && castContext!=null){try{CastSession cs=castContext.getSessionManager().getCurrentCastSession();if(cs!=null && cs.getRemoteMediaClient()!=null){RemoteMediaClient rc=cs.getRemoteMediaClient();saveHistory(rc.getApproximateStreamPosition(),rc.getMediaInfo()==null?0:rc.getMediaInfo().getStreamDuration());}}catch(Exception ignored){}}if(mediaRouter!=null&&routeCallback!=null){mediaRouter.removeCallback(routeCallback);routeCallback=null;}if(castContext!=null&&castListener!=null)castContext.getSessionManager().removeSessionManagerListener(castListener,CastSession.class);handler.removeCallbacks(periodic);handler.removeCallbacks(tvUpdater);if(webPlayer!=null)webPlayer.onPause();if(player!=null){saveProgress();savedPosition=player.getCurrentPosition();playWhenReady=player.getPlayWhenReady();restored=true;playerView.setPlayer(null);player.release();player=null;}super.onStop();}
+ @Override protected void onStop(){if(casting && castContext!=null){try{CastSession cs=castContext.getSessionManager().getCurrentCastSession();if(cs!=null && cs.getRemoteMediaClient()!=null){RemoteMediaClient rc=cs.getRemoteMediaClient();saveHistory(rc.getApproximateStreamPosition(),rc.getMediaInfo()==null?0:rc.getMediaInfo().getStreamDuration());}}catch(Exception ignored){}}if(mediaRouter!=null&&routeCallback!=null){mediaRouter.removeCallback(routeCallback);routeCallback=null;}if(castContext!=null&&castListener!=null)castContext.getSessionManager().removeSessionManagerListener(castListener,CastSession.class);handler.removeCallbacks(periodic);handler.removeCallbacks(tvUpdater);liveWatchActive=false;handler.removeCallbacks(liveWatchdog);if(webPlayer!=null)webPlayer.onPause();if(player!=null){saveProgress();savedPosition=player.getCurrentPosition();playWhenReady=player.getPlayWhenReady();restored=true;playerView.setPlayer(null);player.release();player=null;}super.onStop();}
  @Override protected void onDestroy(){closeWebPlayer();stopObservingRemote();super.onDestroy();}
  @Override protected void onSaveInstanceState(Bundle b){b.putLong("position",player!=null?player.getCurrentPosition():savedPosition);b.putBoolean("playing",player!=null?player.getPlayWhenReady():playWhenReady);b.putInt("playlistIndex",playlistIndex);b.putString("url",url);super.onSaveInstanceState(b);}
 }
