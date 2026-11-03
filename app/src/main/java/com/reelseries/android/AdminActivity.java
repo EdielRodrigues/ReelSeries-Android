@@ -54,6 +54,7 @@ public class AdminActivity extends Activity {
   section("Catálogo online");button("☁  Enviar catálogo completo ao Firebase",()->syncAll());button("↓  Receber atualizações do Firebase",this::downloadCloud);button("☁  Ver configuração do Firebase",()->msg(FirebaseCatalogSync.configured(this)?"Firebase configurado • sincronização disponível":"Configure firebase_catalog_url em res/values/firebase_catalog.xml"));
   section("Importar playlist");
   button("🔗  Adicionar link de playlist M3U",()->urlDialog(false));
+  button("📺  Adicionar IPTV por link get.php",this::iptvLinkDialog);
   button("⇧  Importar arquivo M3U ou JSON",()->new AlertDialog.Builder(this).setItems(new String[]{"Arquivo M3U","Arquivo JSON"},(d,w)->pick(w==0?M3U:JSON)).show());
   button("▶  Adicionar transmissão M3U8",()->urlDialog(true));
   section("Gerenciamento rápido");
@@ -186,6 +187,20 @@ public class AdminActivity extends Activity {
  @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(result!=RESULT_OK||data==null||data.getData()==null)return;if(request==EXPORT){if(authorized)writeBackup(data.getData());return;}if(request!=JSON&&request!=M3U)return;Uri uri=data.getData();new AlertDialog.Builder(this).setTitle("Importar no celular").setMessage("O arquivo será importado neste aparelho e enviado ao Firebase. Registros com o mesmo ID serão atualizados. Continuar?").setNegativeButton("Cancelar",null).setPositiveButton("Importar",(d,w)->importFile(uri,request)).show();}
  private void importFile(Uri uri,int type){if(busy||!authorized)return;busy=true;msg("Importando para SQLite local...");worker.execute(()->{try(InputStream in=getContentResolver().openInputStream(uri)){if(in==null)throw new IOException("Arquivo não disponível");String origin=type==JSON?"JSON":"arquivo:"+uri.toString();int n=type==JSON?catalog.importJson(in,c->msg("JSON: "+c+" registros locais...")):catalog.importM3u(in,origin,c->msg("M3U: "+c+" canais locais..."));msg("Importados "+n+" registros. Enviando ao Firebase...");syncOrigin(origin);}catch(Exception e){msg("Falha na importação: "+e.getMessage());}finally{busy=false;}});}
  private void urlDialog(boolean stream){EditText input=new EditText(this);input.setSingleLine(false);input.setHint(stream?"https://servidor/canal.m3u8":"https://servidor/lista.m3u");new AlertDialog.Builder(this).setTitle(stream?"Adicionar stream M3U8":"Importar playlist M3U").setView(input).setNegativeButton("Cancelar",null).setPositiveButton("Continuar",(d,w)->{String url=input.getText().toString().trim();if(!url.startsWith("https://")&&!url.startsWith("http://")){msg("Use uma URL HTTP ou HTTPS válida.");return;}if(stream)streamName(url);else importUrl(url);}).show();}
+ private void iptvLinkDialog(){
+  if(!authorized){msg("Entre como administrador para importar IPTV.");return;}
+  EditText input=new EditText(this);input.setSingleLine(false);input.setMinLines(3);input.setHint("https://servidor/get.php?username=...&password=...&type=m3u_plus&output=ts");
+  LinearLayout form=new LinearLayout(this);form.setOrientation(1);form.setPadding(dp(18),dp(8),dp(18),0);
+  TextView help=panelText("Cole o link completo fornecido pelo seu serviço IPTV. Os dados de acesso não ficam gravados no código do aplicativo.",14);form.addView(help);form.addView(input);
+  new AlertDialog.Builder(this).setTitle("Adicionar IPTV por link").setView(form).setNegativeButton("Cancelar",null).setPositiveButton("Importar",(d,w)->{
+   String link=input.getText().toString().trim();
+   try{URL parsed=new URL(link);String protocol=parsed.getProtocol();if(!protocol.equalsIgnoreCase("https")&&!protocol.equalsIgnoreCase("http"))throw new Exception();
+    if(parsed.getHost().isEmpty()||!parsed.getPath().toLowerCase(java.util.Locale.ROOT).endsWith("get.php"))throw new Exception();
+    String q=parsed.getQuery();if(q==null||!q.contains("username=")||!q.contains("password="))throw new Exception();
+    importUrl(link);
+   }catch(Exception ex){msg("Informe uma URL válida get.php com username e password.");}
+  }).show();
+ }
  private void streamName(String url){EditText name=new EditText(this);name.setHint("Nome do canal");new AlertDialog.Builder(this).setTitle("Nome do stream").setView(name).setNegativeButton("Cancelar",null).setPositiveButton("Salvar",(d,w)->{String n=name.getText().toString().trim();if(n.isEmpty())n="Canal ao vivo";catalog.addStream(n,url);msg("Stream salvo. Sincronizando Firebase...");syncOne("stream_"+LocalCatalog.hash(url));}).show();}
  private String explainNetworkError(Exception e,String url){
   String detail=e.getMessage()==null?e.getClass().getSimpleName():e.getMessage();
@@ -194,7 +209,7 @@ public class AdminActivity extends Activity {
   if(e instanceof java.net.UnknownHostException)return "Servidor não encontrado. Confira o endereço da playlist e a conexão com a internet. Detalhe: "+detail;
   if(e instanceof java.net.SocketTimeoutException)return "O servidor demorou para responder. Tente novamente ou consulte o fornecedor. Detalhe: "+detail;
   if(e instanceof java.net.ConnectException)return "Não foi possível conectar ao servidor. Verifique endereço, porta e disponibilidade. Detalhe: "+detail;
-  return "Falha ao importar playlist: "+detail;
+  return "Falha ao importar playlist. Verifique o endereço, acesso e formato retornado pelo servidor. Detalhe: "+detail.replaceAll("(?i)(username|password)=[^&\\s]+", "$1=***");
  }
  private void importUrl(String url){
   if(busy||!authorized){msg("Aguarde a operação atual ou entre como administrador.");return;}
@@ -208,8 +223,10 @@ public class AdminActivity extends Activity {
     int code=c.getResponseCode();if(code<200||code>=300)throw new IOException("Servidor retornou HTTP "+code);
     String type=c.getContentType();msg("Conexão estabelecida. Importando playlist"+(type==null?"":" ("+type+")")+"...");
     try(InputStream in=c.getInputStream()){
-     int n=catalog.importM3u(in,url,count->msg("Importando M3U: "+count+" registros..."));
-     msg("Importação concluída: "+n+" registros no armazenamento local. Volte ao catálogo para visualizar.");
+     String origin="iptv_"+LocalCatalog.hash(url);
+     int n=catalog.importM3u(in,origin,count->msg("Importando M3U: "+count+" registros..."));
+     msg("Importação concluída: "+n+" registros locais. Sincronizando com Firebase...");
+     if(n>0)syncOrigin(origin);
     }
    }catch(Exception e){msg(explainNetworkError(e,url));}
    finally{if(c!=null)c.disconnect();busy=false;}
