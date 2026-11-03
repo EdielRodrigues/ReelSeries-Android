@@ -1,6 +1,6 @@
 package com.reelseries.android;
 import android.app.*;import android.os.*;import android.content.*;import android.content.pm.ActivityInfo;import android.view.*;import android.widget.*;
-import androidx.media3.common.*;import androidx.media3.exoplayer.ExoPlayer;import androidx.media3.ui.PlayerView;import androidx.media3.ui.AspectRatioFrameLayout;
+import androidx.media3.common.*;import androidx.media3.exoplayer.ExoPlayer;import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;import androidx.media3.datasource.DefaultHttpDataSource;import androidx.media3.ui.PlayerView;import androidx.media3.ui.AspectRatioFrameLayout;
 import com.google.android.gms.cast.MediaInfo;
 import com.google.android.gms.cast.MediaMetadata;
 import com.google.android.gms.cast.framework.CastButtonFactory;
@@ -327,7 +327,7 @@ public class PlayerActivity extends Activity {
 handler.removeCallbacks(tvUpdater);handler.post(tvUpdater);
 if(webPlayer!=null){webPlayer.onResume();return;}
 if(isWebLink(url)){openWebPlayer(url);return;}
-player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);
+player=newConfiguredPlayer();playerView.setPlayer(player);
  player.addListener(new Player.Listener(){
   @Override public void onPlayerError(PlaybackException e){if(isFinishing())return; if(retryLiveAsHls(e))return; new AlertDialog.Builder(PlayerActivity.this).setTitle(isXtreamLive(url)?"Não foi possível reproduzir TV ao vivo":"Não foi possível reproduzir").setMessage(playbackDiagnostic(e)).setPositiveButton("Voltar",(d,w)->finish()).show();}
   @Override public void onPlaybackStateChanged(int state){if(state==Player.STATE_ENDED&&!casting){markComplete();playNext();}}
@@ -344,7 +344,7 @@ player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);
    }}
    if(isWebLink(url)){openWebPlayer(url);return true;}
    closeWebPlayer();
-   if(player==null){player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);}
+   if(player==null){player=newConfiguredPlayer();playerView.setPlayer(player);}
    player.setMediaItem(buildMediaItem(url));player.prepare();player.setPlayWhenReady(true);return true;
   }return false;
  }
@@ -356,10 +356,20 @@ player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);
   if(l.matches(".*\\.(m3u8|mpd|mp4|m4v|mkv|webm|mov|mp3|aac|ts|mpg|mpeg|3gp|avi)([?#].*)?$"))return false;
   return l.matches(".*\\.(html?|php)([?#].*)?$");
  }
+ // Some Xtream servers redirect HTTPS channel URLs to HTTP CDN endpoints.
+ // Allow redirects across protocols for playback only; retain normal server-side authorization.
+ private ExoPlayer newConfiguredPlayer(){
+  DefaultHttpDataSource.Factory http=new DefaultHttpDataSource.Factory()
+   .setAllowCrossProtocolRedirects(true)
+   .setConnectTimeoutMs(20000)
+   .setReadTimeoutMs(20000);
+  DefaultMediaSourceFactory media=new DefaultMediaSourceFactory(http);
+  return new ExoPlayer.Builder(this).setMediaSourceFactory(media).build();
+ }
  private boolean isXtreamLive(String link){return link!=null&&link.toLowerCase(java.util.Locale.ROOT).matches("https?://[^?#]+/live/[^?#]+\\.(ts|m3u8)([?#].*)?");}
  private String playbackDiagnostic(PlaybackException error){
   StringBuilder message=new StringBuilder();
-  if(isXtreamLive(url))message.append("O servidor recusou a transmissão ou devolveu dados incompatíveis. A importação pela API não garante autorização para reproduzir canais.\n\n");
+  if(isXtreamLive(url))message.append("A transmissão de TV ao vivo falhou. A API pode listar canais mesmo quando o endereço de vídeo está indisponível.\n\n");
   else message.append("Não foi possível reproduzir o vídeo.\n\n");
   if(!liveFirstError.isEmpty())message.append("Tentativa MPEG-TS: ").append(liveFirstError).append("\n");
   message.append("Última tentativa: ").append(error.getErrorCodeName());
@@ -370,7 +380,9 @@ player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);
     message.append(" (HTTP ").append(status).append(")");
     if(status==401||status==403)message.append("\nAcesso ao canal negado pelo servidor. Confira se a conta permite TV ao vivo e qual URL de streaming o fornecedor utiliza.");
     else if(status==404)message.append("\nO endereço de reprodução do canal não foi encontrado no servidor.");
-    else if(status>=500)message.append("\nFalha temporária no servidor de streaming.");
+    else if(status==502)message.append("\nO gateway do servidor não conseguiu entregar o canal (502). Verifique o canal no provedor.");
+    else if(status>=500)message.append("\nFalha no servidor de streaming.");
+    else if(status>=300&&status<400)message.append("\nO servidor devolveu um redirecionamento HTTP. Verifique se o destino é acessível e permitido.");
     break;
    }
    cause=cause.getCause();
