@@ -54,7 +54,7 @@ public class AdminActivity extends Activity {
   section("Catálogo online");button("☁  Enviar catálogo completo ao Firebase",()->syncAll());button("↓  Receber atualizações do Firebase",this::downloadCloud);button("☁  Ver configuração do Firebase",()->msg(FirebaseCatalogSync.configured(this)?"Firebase configurado • sincronização disponível":"Configure firebase_catalog_url em res/values/firebase_catalog.xml"));
   section("Importar playlist");
   button("🔗  Adicionar link de playlist M3U",()->urlDialog(false));
-  button("📺  Adicionar IPTV (servidor, login e senha)",this::iptvCredentialsDialog);
+  button("📺  Conectar Xtream Codes (servidor, login e senha)",this::iptvCredentialsDialog);
   button("🔗  Adicionar IPTV por link get.php",this::iptvLinkDialog);
   button("⇧  Importar arquivo M3U ou JSON",()->new AlertDialog.Builder(this).setItems(new String[]{"Arquivo M3U","Arquivo JSON"},(d,w)->pick(w==0?M3U:JSON)).show());
   button("▶  Adicionar transmissão M3U8",()->urlDialog(true));
@@ -191,19 +191,105 @@ public class AdminActivity extends Activity {
  private void iptvCredentialsDialog(){
   if(!authorized){msg("Entre como administrador para importar IPTV.");return;}
   LinearLayout form=new LinearLayout(this);form.setOrientation(1);form.setPadding(dp(18),dp(8),dp(18),dp(8));
-  EditText server=new EditText(this);server.setSingleLine(true);server.setHint("Servidor: http://exemplo.com:porta");server.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_URI);form.addView(server);
+  EditText server=new EditText(this);server.setSingleLine(true);server.setHint("Servidor: https://scut.lat");server.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_URI);form.addView(server);server.setText("https://scut.lat");
   EditText username=new EditText(this);username.setSingleLine(true);username.setHint("Login IPTV");form.addView(username);
   EditText password=new EditText(this);password.setSingleLine(true);password.setHint("Senha IPTV");password.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);form.addView(password);
   TextView hint=panelText("Use o endereço de servidor fornecido pelo serviço. HTTP envia as credenciais sem criptografia; prefira HTTPS quando disponível. O aplicativo não grava estes dados no código.",13);form.addView(hint);
-  new AlertDialog.Builder(this).setTitle("Acesso IPTV Xtream / M3U").setView(form).setNegativeButton("Cancelar",null).setPositiveButton("Importar",(d,w)->{
+  new AlertDialog.Builder(this).setTitle("Conectar Xtream Codes API").setView(form).setNegativeButton("Cancelar",null).setPositiveButton("Importar",(d,w)->{
    try{
     String host=server.getText().toString().trim();String user=username.getText().toString().trim();String pass=password.getText().toString();
     URL u=new URL(host);String scheme=u.getProtocol();if((!scheme.equalsIgnoreCase("http")&&!scheme.equalsIgnoreCase("https"))||u.getHost().isEmpty()||user.isEmpty()||pass.isEmpty())throw new Exception();
     String base=scheme+"://"+u.getAuthority();
-    String link=base+"/get.php?username="+java.net.URLEncoder.encode(user,"UTF-8")+"&password="+java.net.URLEncoder.encode(pass,"UTF-8")+"&type=m3u_plus&output=ts";
-    importUrl(link);
+    importXtream(base,user,pass);
    }catch(Exception ex){msg("Preencha o endereço completo (http:// ou https://), login e senha válidos.");}
   }).show();
+ }
+ private void importXtream(String base,String user,String pass){
+  if(busy||!authorized){msg("Aguarde a operação atual ou entre como administrador.");return;}
+  busy=true;msg("Testando autenticação Xtream Codes...");
+  worker.execute(()->{
+   try{
+    String query="username="+java.net.URLEncoder.encode(user,"UTF-8")+"&password="+java.net.URLEncoder.encode(pass,"UTF-8");
+    String api=base+"/player_api.php?"+query;
+    org.json.JSONObject login=xtreamJson(api);
+    org.json.JSONObject account=login.optJSONObject("user_info");
+    if(account==null || !"1".equals(String.valueOf(account.opt("auth"))))throw new IOException("Login não autorizado pela API Xtream. Confirme os dados com o fornecedor.");
+    String statusAccount=account.optString("status","");
+    if(!statusAccount.isEmpty()&&!"Active".equalsIgnoreCase(statusAccount))throw new IOException("Conta IPTV não está ativa: "+statusAccount);
+    msg("Autenticação Xtream confirmada. Obtendo categorias...");
+    java.util.HashMap<String,String> live=xtreamCategories(api+"&action=get_live_categories");
+    java.util.HashMap<String,String> vod=xtreamCategories(api+"&action=get_vod_categories");
+    java.util.HashMap<String,String> series=xtreamCategories(api+"&action=get_series_categories");
+    String origin="xtream_"+LocalCatalog.hash(base+"|"+user);
+    int total=0;
+    total+=xtreamImport(api+"&action=get_live_streams",base,user,pass,"live",live,origin);
+    total+=xtreamImport(api+"&action=get_vod_streams",base,user,pass,"movie",vod,origin);
+    total+=xtreamImport(api+"&action=get_series",base,user,pass,"series",series,origin);
+    msg("Xtream: "+total+" registros importados. Enviando ao Firebase...");
+    if(total>0)syncOrigin(origin);
+   }catch(Exception e){msg("Xtream Codes: "+xtreamSafeError(e));}
+   finally{busy=false;}
+  });
+ }
+ private String xtreamSafeError(Exception e){String m=e.getMessage()==null?e.getClass().getSimpleName():e.getMessage();return m.replaceAll("(?i)(username|password)=[^&\\s]+","$1=***");}
+ private java.net.HttpURLConnection xtreamConnect(String url)throws Exception{
+  java.net.HttpURLConnection c=(java.net.HttpURLConnection)new URL(url).openConnection();
+  c.setConnectTimeout(15000);c.setReadTimeout(60000);c.setInstanceFollowRedirects(true);
+  c.setRequestProperty("Accept","application/json, */*");c.setRequestProperty("User-Agent","ReelSeries-Android/19");
+  int code=c.getResponseCode();if(code<200||code>=300){c.disconnect();throw new IOException("API retornou HTTP "+code+". Verifique se player_api.php está autorizado neste servidor.");}
+  return c;
+ }
+ private org.json.JSONObject xtreamJson(String url)throws Exception{
+  java.net.HttpURLConnection c=xtreamConnect(url);
+  try(java.io.InputStream in=c.getInputStream()){
+   java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();byte[] b=new byte[4096];int n;
+   while((n=in.read(b))!=-1){out.write(b,0,n);if(out.size()>1048576)throw new IOException("Resposta de autenticação grande demais");}
+   return new org.json.JSONObject(out.toString("UTF-8"));
+  }finally{c.disconnect();}
+ }
+ private java.util.HashMap<String,String> xtreamCategories(String url)throws Exception{
+  java.util.HashMap<String,String> map=new java.util.HashMap<>();java.net.HttpURLConnection c=xtreamConnect(url);
+  try(java.io.InputStream in=c.getInputStream();android.util.JsonReader r=new android.util.JsonReader(new java.io.InputStreamReader(in,"UTF-8"))){
+   if(r.peek()!=android.util.JsonToken.BEGIN_ARRAY)throw new IOException("Categorias Xtream não retornaram uma lista JSON");
+   r.beginArray();while(r.hasNext()){String id="",name="";r.beginObject();while(r.hasNext()){String key=r.nextName();if(key.equals("category_id"))id=xtreamValue(r);else if(key.equals("category_name"))name=xtreamValue(r);else r.skipValue();}r.endObject();if(!id.isEmpty())map.put(id,name);}
+   r.endArray();return map;
+  }finally{c.disconnect();}
+ }
+ private String xtreamValue(android.util.JsonReader r)throws Exception{
+  android.util.JsonToken t=r.peek();if(t==android.util.JsonToken.STRING||t==android.util.JsonToken.NUMBER)return r.nextString();if(t==android.util.JsonToken.BOOLEAN)return String.valueOf(r.nextBoolean());r.skipValue();return "";
+ }
+ private int xtreamImport(String api,String base,String user,String pass,String type,java.util.HashMap<String,String> categories,String origin)throws Exception{
+  java.net.HttpURLConnection c=xtreamConnect(api);int count=0;
+  android.database.sqlite.SQLiteDatabase db=catalog.getWritableDatabase();boolean transaction=false;
+  try(java.io.InputStream in=c.getInputStream();android.util.JsonReader r=new android.util.JsonReader(new java.io.InputStreamReader(in,"UTF-8"))){
+   if(r.peek()!=android.util.JsonToken.BEGIN_ARRAY)throw new IOException("Lista "+type+" não retornou JSON válido");
+   r.beginArray();db.beginTransaction();transaction=true;
+   while(r.hasNext()){
+    if(r.peek()!=android.util.JsonToken.BEGIN_OBJECT){r.skipValue();continue;}
+    String id="",name="",category="",cover="",extension="",description="";
+    r.beginObject();while(r.hasNext()){
+     String key=r.nextName();
+     if(key.equals("stream_id")||key.equals("series_id"))id=xtreamValue(r);
+     else if(key.equals("name")||key.equals("title"))name=xtreamValue(r);
+     else if(key.equals("category_id"))category=xtreamValue(r);
+     else if(key.equals("stream_icon")||key.equals("cover"))cover=xtreamValue(r);
+     else if(key.equals("container_extension"))extension=xtreamValue(r);
+     else if(key.equals("plot"))description=xtreamValue(r);
+     else r.skipValue();
+    }r.endObject();
+    if(id.isEmpty()||name.isEmpty())continue;
+    String url="";
+    if(type.equals("live"))url=base+"/live/"+java.net.URLEncoder.encode(user,"UTF-8")+"/"+java.net.URLEncoder.encode(pass,"UTF-8")+"/"+id+".ts";
+    if(type.equals("movie")){if(extension.isEmpty())extension="mp4";url=base+"/movie/"+java.net.URLEncoder.encode(user,"UTF-8")+"/"+java.net.URLEncoder.encode(pass,"UTF-8")+"/"+id+"."+extension.replaceAll("[^a-zA-Z0-9]","");}
+    // Series require get_series_info and episode selection; do not invent a playable URL.
+    String cat=categories.get(category);if(cat==null||cat.isEmpty())cat=type.equals("live")?"TV / IPTV":type.equals("movie")?"Filmes":"Séries";
+    String key="xtream_"+LocalCatalog.hash(base+"|"+user+"|"+type+"|"+id);
+    catalog.save(db,key,name,cat,cover,url,description,cat,origin);count++;
+    if(count%150==0){db.setTransactionSuccessful();db.endTransaction();transaction=false;msg("Xtream "+type+": "+count+" registros...");db.beginTransaction();transaction=true;}
+   }
+   r.endArray();db.setTransactionSuccessful();db.endTransaction();transaction=false;
+   return count;
+  }finally{if(transaction)db.endTransaction();c.disconnect();}
  }
  private void iptvLinkDialog(){
   if(!authorized){msg("Entre como administrador para importar IPTV.");return;}
