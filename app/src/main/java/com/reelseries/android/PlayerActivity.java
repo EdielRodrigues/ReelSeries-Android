@@ -22,7 +22,7 @@ import android.webkit.WebSettings;
 import android.net.Uri;
 import org.json.*;import java.security.MessageDigest;import java.nio.charset.StandardCharsets;
 public class PlayerActivity extends Activity {
- private ExoPlayer player;private PlayerView playerView;private FrameLayout playerRoot;private WebView webPlayer;private boolean usingWeb=false;private long savedPosition=0;private String url;private boolean playWhenReady=true;
+ private boolean liveHlsRetried=false;private ExoPlayer player;private PlayerView playerView;private FrameLayout playerRoot;private WebView webPlayer;private boolean usingWeb=false;private long savedPosition=0;private String url;private boolean playWhenReady=true;
  private CastContext castContext;
  private String castError="";
  private SessionManagerListener<CastSession> castListener;
@@ -329,7 +329,7 @@ if(webPlayer!=null){webPlayer.onResume();return;}
 if(isWebLink(url)){openWebPlayer(url);return;}
 player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);
  player.addListener(new Player.Listener(){
-  @Override public void onPlayerError(PlaybackException e){if(!isFinishing())new AlertDialog.Builder(PlayerActivity.this).setTitle("Não foi possível reproduzir").setMessage("O servidor ou o formato do vídeo pode estar indisponível.\n\n"+e.getErrorCodeName()).setPositiveButton("Voltar",(d,w)->finish()).show();}
+  @Override public void onPlayerError(PlaybackException e){if(isFinishing())return; if(retryLiveAsHls(e))return; new AlertDialog.Builder(PlayerActivity.this).setTitle("Não foi possível reproduzir TV ao vivo").setMessage("O servidor não entregou um fluxo de vídeo compatível. Verifique a autorização de reprodução do canal e se o servidor permite MPEG-TS ou HLS.\n\n"+e.getErrorCodeName()).setPositiveButton("Voltar",(d,w)->finish()).show();}
   @Override public void onPlaybackStateChanged(int state){if(state==Player.STATE_ENDED&&!casting){markComplete();playNext();}}
  });
  player.setMediaItem(buildMediaItem(url));player.prepare();long pos=restored?savedPosition:Math.max(stored(url),getIntent().getLongExtra("resume_position",0));player.seekTo(Math.max(0,pos));player.setPlayWhenReady(!casting&&playWhenReady);handler.postDelayed(periodic,5000);
@@ -355,6 +355,18 @@ player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);
   if(l.contains("/embed/")||l.contains("/movie/")||l.contains("youtube.com/watch")||l.contains("youtu.be/")||l.contains("/iframe/"))return true;
   if(l.matches(".*\\.(m3u8|mpd|mp4|m4v|mkv|webm|mov|mp3|aac|ts|mpg|mpeg|3gp|avi)([?#].*)?$"))return false;
   return l.matches(".*\\.(html?|php)([?#].*)?$");
+ }
+ // Xtream live servers may expose HLS when the MPEG-TS endpoint returns an unsupported response.
+ private boolean retryLiveAsHls(PlaybackException error){
+  if(liveHlsRetried||url==null)return false;
+  String lower=url.toLowerCase(java.util.Locale.ROOT);
+  if(!lower.matches("https?://[^?#]+/live/[^?#]+\\.ts([?#].*)?"))return false;
+  if(error.errorCode!=PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED && error.errorCode!=PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED && error.errorCode!=PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS)return false;
+  liveHlsRetried=true;
+  String hls=url.replaceFirst("(?i)\\.ts(?=([?#]|$))",".m3u8");
+  android.widget.Toast.makeText(this,"Testando transmissão HLS do canal...",android.widget.Toast.LENGTH_SHORT).show();
+  player.setMediaItem(buildMediaItem(hls));player.prepare();player.setPlayWhenReady(true);
+  return true;
  }
  private MediaItem buildMediaItem(String link){
   MediaItem.Builder b=new MediaItem.Builder().setUri(Uri.parse(link));
