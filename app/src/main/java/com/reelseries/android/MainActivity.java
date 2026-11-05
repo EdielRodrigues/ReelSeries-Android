@@ -5,7 +5,7 @@ import android.app.*;import android.os.*;import android.content.*;import android
 public class MainActivity extends Activity {
  final ArrayList<JSONObject> all=new ArrayList<>(), shown=new ArrayList<>(); final java.util.HashMap<String,JSONObject> cloud=new java.util.HashMap<>();
  final ExecutorService pool=Executors.newFixedThreadPool(3); final android.util.LruCache<String,Bitmap> cache=new android.util.LruCache<String,Bitmap>(16);
- GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos", channelGroup=""; int pageOffset=0; boolean loadingPage=false, endReached=false, bundledPaging=false; TextView moreButton; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
+ GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos", channelGroup=""; int pageOffset=0; boolean loadingPage=false, endReached=false, bundledPaging=false; TextView moreButton; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; int localCatalogCount=0; boolean catalogLoadedOnce=false; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
  final ArrayList<JSONObject> heroItems=new ArrayList<>(); int heroIndex=0; boolean heroActive=false;
  Runnable heroTicker; android.widget.LinearLayout heroDots;
  // Ten different highlights every 30 minutes; six-second slide interval.
@@ -56,21 +56,38 @@ public class MainActivity extends Activity {
  grid.setOnItemClickListener((a,v,p,id)->details(shown.get(p)));
  search.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int c,int af){}public void onTextChanged(CharSequence s,int st,int before,int count){if(pending!=null)handler.removeCallbacks(pending);pending=()->resetFeed();handler.postDelayed(pending,220);}public void afterTextChanged(Editable e){}});
  categories.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> p){}public void onItemSelected(android.widget.AdapterView<?> p,View v,int pos,long id){selected=catNames.get(pos);resetFeed();}});
- pool.execute(()->{try{ByteArrayOutputStream out=new ByteArrayOutputStream();InputStream in=getAssets().open("catalogo.json");byte[] buf=new byte[32768];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);in.close();JSONArray arr=new JSONArray(out.toString("UTF-8"));ArrayList<JSONObject> loaded=new ArrayList<>();TreeSet<String> cats=new TreeSet<>();for(int i=0;i<arr.length();i++){JSONObject o=arr.getJSONObject(i);loaded.add(o);cats.add(o.optString("categoria"));}runOnUiThread(()->{all.addAll(loaded);catNames.addAll(cats);if(!loaded.isEmpty()){
-  heroCandidates.clear();java.util.HashSet<String> used=new java.util.HashSet<>();
-  for(JSONObject item:loaded){
-   String name=item.optString("nome","").trim();
-   String cover=item.optString("backdrop","");if(!cover.startsWith("https://"))cover=item.optString("capa","");
-   String cat=item.optString("categoria","").toLowerCase(java.util.Locale.ROOT);
-   if(name.length()>2&&cover.startsWith("https://")&&!cat.contains("episod")&&!cat.contains("canal")&&!cat.contains("iptv")&&used.add(name.toLowerCase(java.util.Locale.ROOT)))heroCandidates.add(item);
-  }
-  if(heroCandidates.isEmpty())heroCandidates.add(loaded.get(0));
-  heroBatchStart=0L;
-  refreshHeroBatchIfNeeded(heroImage,heroTitle,heroDescription,featured);
-  heroActive=true;
-  if(heroTicker!=null){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,HERO_SLIDE_MS);}
-  scheduleHeroBatchCheck();
- }((ArrayAdapter)categories.getAdapter()).notifyDataSetChanged();resetFeed();});}catch(Exception e){runOnUiThread(()->status.setText("Erro no catálogo: "+e.getMessage()));}});
+ // Somente o banco SQLite sincronizado do Firebase alimenta o catálogo.
+ // O JSON embutido no APK não é mais lido nem usado como fallback.
+ loadSavedFirebaseCatalog(heroImage,heroTitle,heroDescription,featured);
+
+ }
+ void loadSavedFirebaseCatalog(ImageView heroImage,TextView heroTitle,TextView heroDescription,JSONObject[] featured){
+  pool.execute(()->{
+   final ArrayList<JSONObject> candidates=new ArrayList<>();
+   final ArrayList<String> cats;
+   final int total;
+   try(LocalCatalog db=new LocalCatalog(this)){
+    total=db.count();cats=db.categories();
+    // Uma página pequena basta para o destaque, sem carregar milhares de títulos na RAM.
+    for(JSONObject item:db.page(0,180)){
+     String cover=item.optString("capa","");String category=item.optString("categoria","").toLowerCase(java.util.Locale.ROOT);
+     if(cover.startsWith("https://")&&!category.contains("episod")&&!category.contains("canal")&&!category.contains("iptv"))candidates.add(item);
+    }
+   }catch(Exception e){runOnUiThread(()->{if(status!=null)status.setText("Erro ao abrir catálogo salvo: "+e.getMessage());});return;}
+   runOnUiThread(()->{
+    if(isFinishing())return;
+    localCatalogCount=total;catalogLoadedOnce=true;
+    catNames.clear();catNames.add("Todas");for(String c:cats)if(!catNames.contains(c))catNames.add(c);
+    ((ArrayAdapter)categories.getAdapter()).notifyDataSetChanged();
+    heroCandidates.clear();heroCandidates.addAll(candidates);heroBatchStart=0;
+    refreshHeroBatchIfNeeded(heroImage,heroTitle,heroDescription,featured);
+    heroActive=true;
+    if(heroTicker!=null){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,HERO_SLIDE_MS);}
+    scheduleHeroBatchCheck();
+    resetFeed();
+    if(total==0&&status!=null)status.setText("Aguardando primeira sincronização do Firebase...");
+   });
+  });
  }
  void showHero(int index,ImageView picture,TextView title,TextView description,JSONObject[] selectedItem){
   if(heroItems.isEmpty())return;
@@ -164,7 +181,9 @@ public class MainActivity extends Activity {
      if(isFinishing()||categories==null)return;
      for(String c:cats)if(!catNames.contains(c))catNames.add(c);
      ((ArrayAdapter)categories.getAdapter()).notifyDataSetChanged();
-     resetFeed();
+     getSharedPreferences("reel_folder_cache_v1",MODE_PRIVATE).edit().remove("folders").apply();
+     // Atualiza o feed; o próximo menu reconstruirá e salvará as pastas uma única vez.
+     localCatalogCount=n;resetFeed();
      if(status!=null)status.setText("Catálogo salvo no celular • "+n+" registros sincronizados");
     });
    }catch(Exception e){runOnUiThread(()->{if(status!=null)status.setText("Catálogo local disponível • atualização pendente: "+e.getMessage());});}
@@ -182,40 +201,52 @@ public class MainActivity extends Activity {
   TextView groupsTitle=navText("CATÁLOGO POR PASTAS",12);groupsTitle.setTextColor(0xffff5269);groupsTitle.setPadding(dp(10),dp(12),0,dp(10));panel.addView(groupsTitle);
   ScrollView scroll=new ScrollView(this);panel.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
   LinearLayout list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);scroll.addView(list);
-  TextView wait=navText("Carregando pastas do catálogo...",13);list.addView(wait);
+  TextView wait=navText("Carregando pastas pela primeira vez...",13);list.addView(wait);
   drawer.setContentView(panel);
   android.view.Window win=drawer.getWindow();if(win!=null){win.setBackgroundDrawableResource(android.R.color.transparent);win.setGravity(Gravity.START|Gravity.TOP);win.setLayout(Math.min(dp(310),getResources().getDisplayMetrics().widthPixels*85/100),-1);win.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);android.view.WindowManager.LayoutParams a=win.getAttributes();a.dimAmount=0.45f;win.setAttributes(a);}
   drawer.show();if(win!=null)win.setLayout(Math.min(dp(310),getResources().getDisplayMetrics().widthPixels*85/100),-1);
+  android.content.SharedPreferences pref=getSharedPreferences("reel_folder_cache_v1",MODE_PRIVATE);
+  String saved=pref.getString("folders","");
+  if(!saved.isEmpty()){
+   try{
+    JSONObject json=new JSONObject(saved);java.util.LinkedHashMap<String,Integer> counts=new java.util.LinkedHashMap<>();
+    java.util.Iterator<String> keys=json.keys();while(keys.hasNext()){String key=keys.next();counts.put(key,json.optInt(key));}
+    renderFolderItems(list,drawer,counts);return;
+   }catch(Exception ignored){}
+  }
   pool.execute(()->{
    final java.util.LinkedHashMap<String,Integer> counts;
    try(LocalCatalog db=new LocalCatalog(this)){counts=db.catalogFolders();}
-   catch(Exception e){runOnUiThread(()->wait.setText("Não foi possível listar canais"));return;}
-   runOnUiThread(()->{
-    if(!drawer.isShowing())return;
-    list.removeAllViews();
-    if(counts.isEmpty()){TextView empty=navText("Nenhum título salvo ainda",13);list.addView(empty);return;}
-    for(java.util.Map.Entry<String,Integer> entry:counts.entrySet()){
-     final String group=entry.getKey();
-     TextView item=navText("▱  "+group+"    ("+entry.getValue()+")",15);
-     item.setPadding(dp(10),dp(12),dp(6),dp(12));list.addView(item);
-     item.setOnClickListener(v->{drawer.dismiss();channelGroup=group;mode="Todos";selected="Todas";if(categories!=null && categories.getSelectedItemPosition()!=0)categories.setSelection(0);if(search!=null)search.setText("");resetFeed();});
-    }
-   });
+   catch(Exception e){runOnUiThread(()->wait.setText("Não foi possível listar as pastas"));return;}
+   if(!counts.isEmpty()){
+    JSONObject json=new JSONObject();try{for(java.util.Map.Entry<String,Integer> entry:counts.entrySet())json.put(entry.getKey(),entry.getValue());}catch(Exception ignored){}
+    pref.edit().putString("folders",json.toString()).apply();
+   }
+   runOnUiThread(()->{if(drawer.isShowing())renderFolderItems(list,drawer,counts);});
   });
+ }
+ private void renderFolderItems(LinearLayout list,android.app.Dialog drawer,java.util.LinkedHashMap<String,Integer> counts){
+  list.removeAllViews();
+  if(counts.isEmpty()){list.addView(navText("Aguardando catálogo do Firebase",13));return;}
+  java.util.ArrayList<String> names=new java.util.ArrayList<>(counts.keySet());java.util.Collections.sort(names,String.CASE_INSENSITIVE_ORDER);
+  for(String group:names){
+   TextView item=navText("▱  "+group+"    ("+counts.get(group)+")",15);
+   item.setPadding(dp(10),dp(12),dp(6),dp(12));list.addView(item);
+   item.setOnClickListener(v->{drawer.dismiss();channelGroup=group;mode="Todos";selected="Todas";if(categories!=null&&categories.getSelectedItemPosition()!=0)categories.setSelection(0);if(search!=null)search.setText("");resetFeed();});
+  }
  }
  void resetFeed(){if(search==null||grid==null||adapter==null)return;requestVersion++;pageOffset=0;endReached=false;loadingPage=false;bundledPaging=false;localPages.clear();shown.clear();adapter.notifyDataSetChanged();updateGridHeight();loadNextPage();}
  boolean matches(JSONObject o,String query){String name=o.optString("nome","");String cat=o.optString("categoria","");String c=cat.toLowerCase(java.util.Locale.ROOT);String n=name.toLowerCase(java.util.Locale.ROOT);if(!n.contains(query))return false;if(!selected.equals("Todas")&&!selected.equals(cat))return false;boolean tv=c.contains("iptv")||c.contains("canal")||c.contains("tv ao vivo")||c.equals("tv")||c.contains("televis");boolean series=SeriesHelper.isSeries(o);if(mode.equals("TV / IPTV"))return tv;if(mode.equals("Séries"))return series&&!tv;if(mode.equals("Filmes"))return !tv&&!series&&(c.contains("filme")||c.contains("movie")||c.contains("cinema"));return true;}
  void loadNextPage(){
   if(loadingPage||endReached||pool.isShutdown())return;
-  if(mode.equals("Séries") && !all.isEmpty() && channelGroup.isEmpty()){loadSeriesPage();return;}
+  // Séries também são consultadas no banco SQLite.
   loadingPage=true;final int version=requestVersion,offset=pageOffset;
   final String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim(),m=mode,cat=selected,groupFilter=channelGroup;
   moreButton.setVisibility(View.VISIBLE);moreButton.setText("CARREGANDO TÍTULOS...");
   pool.execute(()->{
    try{
     ArrayList<JSONObject> page=new ArrayList<>();boolean useBundled=bundledPaging;
-    if(!useBundled){try(LocalCatalog db=new LocalCatalog(this)){page=groupFilter.isEmpty()?db.feed(q,m,cat,offset,60):db.catalogFolderFeed(groupFilter,q,offset,60);}
-     if(offset==0 && page.isEmpty() && !all.isEmpty() && groupFilter.isEmpty())useBundled=true;}
+    if(!useBundled){try(LocalCatalog db=new LocalCatalog(this)){page=groupFilter.isEmpty()?db.feed(q,m,cat,offset,60):db.catalogFolderFeed(groupFilter,q,offset,60);}}
     boolean hasMore;
     if(useBundled){
      page.clear();int found=0;
@@ -260,7 +291,7 @@ public class MainActivity extends Activity {
   });
  }
  void refreshLocal(){resetFeed();}
- void filter(){if(adapter==null)return;String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim();shown.clear();java.util.HashSet<String> ids=new java.util.HashSet<>(),grouped=new java.util.HashSet<>();ArrayList<JSONObject> combined=new ArrayList<>(localPages);if(combined.isEmpty() && pageOffset==0){int added=0;for(JSONObject fallback:all){if(matches(fallback,q)){combined.add(fallback);if(++added>=60)break;}}}for(JSONObject o:combined){if(!matches(o,q))continue;String id=o.optString("id","");if(!id.isEmpty()&&!ids.add(id))continue;if(SeriesHelper.isSeries(o)){String k=SeriesHelper.key(o);if(!grouped.add(k))continue;}shown.add(o);}status.setText(shown.size()+" títulos exibidos • "+all.size()+" no APK");adapter.notifyDataSetChanged();updateGridHeight();}
+ void filter(){if(adapter==null)return;String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim();shown.clear();java.util.HashSet<String> ids=new java.util.HashSet<>(),grouped=new java.util.HashSet<>();ArrayList<JSONObject> combined=new ArrayList<>(localPages);if(combined.isEmpty() && pageOffset==0){int added=0;for(JSONObject fallback:all){if(matches(fallback,q)){combined.add(fallback);if(++added>=60)break;}}}for(JSONObject o:combined){if(!matches(o,q))continue;String id=o.optString("id","");if(!id.isEmpty()&&!ids.add(id))continue;if(SeriesHelper.isSeries(o)){String k=SeriesHelper.key(o);if(!grouped.add(k))continue;}shown.add(o);}status.setText(shown.size()+" títulos exibidos • "+localCatalogCount+" salvos no celular");adapter.notifyDataSetChanged();updateGridHeight();}
  void updateGridHeight(){
   if(grid==null)return;
   int rows=Math.max(1,(shown.size()+2)/3);
@@ -268,7 +299,7 @@ public class MainActivity extends Activity {
   android.view.ViewGroup.LayoutParams params=grid.getLayoutParams();
   if(params!=null&&params.height!=height){params.height=height;grid.setLayoutParams(params);}
  }
- @Override protected void onResume(){super.onResume();heroActive=true;if(heroBatchTicker!=null){handler.removeCallbacks(heroBatchTicker);handler.post(heroBatchTicker);}if(heroTicker!=null){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,HERO_SLIDE_MS);}if(search!=null){String wanted=getIntent().getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){getIntent().removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}resetFeed();if(FirebaseCatalogSync.configured(this))loadCloud();}}
+ @Override protected void onResume(){super.onResume();heroActive=true;if(heroBatchTicker!=null){handler.removeCallbacks(heroBatchTicker);handler.post(heroBatchTicker);}if(heroTicker!=null){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,HERO_SLIDE_MS);}if(search!=null){String wanted=getIntent().getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){getIntent().removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}if(!catalogLoadedOnce)resetFeed();if(FirebaseCatalogSync.configured(this))loadCloud();}}
  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(search!=null){String wanted=intent.getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){intent.removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}}}
  void details(JSONObject o){Intent i=new Intent(this,DetailsActivity.class);i.putExtra("item",o.toString());startActivity(i);}
  void loadCover(String url,ImageView image){if(url.equals(image.getTag()) && image.getDrawable()!=null)return;image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag()))image.setImageBitmap(bitmap);});}}catch(Exception ignored){}});}
