@@ -10,10 +10,10 @@ public class DetailsActivity extends Activity {
  TextView category=text("CATEGORIA  •  "+o.optString("categoria","Não informada"),13,0xffff657a);root.addView(category);
  String episode=o.optString("episodio","").trim();if(!episode.isEmpty())root.addView(text("EPISÓDIO  •  "+episode,14,0xffd1d5db));
  String url=LocalCatalog.first(o,"url","video","link","stream","stream_url","video_url","play_url","source","src");Button play=new Button(this);play.setAllCaps(false);play.setText("▶  Assistir agora");play.setTextSize(18);play.setTextColor(0xffffffff);play.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xffe33d59));root.addView(play,new LinearLayout.LayoutParams(-1,dp(58)));
- play.setEnabled(url.startsWith("http"));if(!url.startsWith("http"))play.setText("Vídeo indisponível");play.setOnClickListener(v->{Intent i=new Intent(this,PlayerActivity.class);i.putExtra("url",url);i.putExtra("name",o.optString("nome"));i.putExtra("capa",o.optString("capa",o.optString("backdrop","")));attachPlaylist(i,url);startActivity(i);});
+ play.setEnabled(url.startsWith("http"));if(!url.startsWith("http"))play.setText(SeriesHelper.isSeries(o)?"Selecione um episódio abaixo":"Vídeo indisponível");play.setOnClickListener(v->{Intent i=new Intent(this,PlayerActivity.class);i.putExtra("url",url);i.putExtra("name",o.optString("nome"));i.putExtra("capa",o.optString("capa",o.optString("backdrop","")));attachPlaylist(i,url);startActivity(i);});
  Button favorite=new Button(this);favorite.setAllCaps(false);String favKey=o.optString("nome");android.content.SharedPreferences prefs=getSharedPreferences("reel_favorites",MODE_PRIVATE);Runnable updateFav=()->favorite.setText(prefs.getBoolean(favKey,false)?"♥  Remover dos favoritos":"♡  Adicionar aos favoritos");updateFav.run();favorite.setOnClickListener(v->{prefs.edit().putBoolean(favKey,!prefs.getBoolean(favKey,false)).apply();updateFav.run();});root.addView(favorite);
  root.addView(text("SINOPSE",17,0xffffffff));String synopsis=o.optString("sinopse","").trim();root.addView(text(synopsis.isEmpty()?"Sinopse não informada.":synopsis,15,0xffcbd5e1));
- if(SeriesHelper.episode(o))showSeasons(root,o);
+ if(SeriesHelper.isSeries(o))showSeasons(root,o);
  root.addView(text("INFORMAÇÕES",17,0xffffffff));root.addView(text("Título: "+o.optString("nome")+"\nCategoria: "+o.optString("categoria")+(episode.isEmpty()?"":"\nEpisódio: "+episode)+"\nFonte: catálogo Reel Séries",14,0xff9ca3af));
  String img=o.optString("capa","");if(img.startsWith("https://")){new Thread(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(img).openConnection();c.setConnectTimeout(5000);c.setReadTimeout(5000);BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=2;try(InputStream in=c.getInputStream()){Bitmap bmp=BitmapFactory.decodeStream(in,null,opts);if(bmp!=null)runOnUiThread(()->{if(!isFinishing())cover.setImageBitmap(bmp);});}c.disconnect();}catch(Exception ignored){}}).start();}
  }
@@ -68,27 +68,31 @@ public class DetailsActivity extends Activity {
      java.util.ArrayList<Integer> keys=new java.util.ArrayList<>(grouped.keySet());java.util.ArrayList<String> labels=new java.util.ArrayList<>();for(Integer k:keys)labels.add("Temporada "+k+" • "+grouped.get(k).size()+" episódios");
      JSONArray orderedPlaylist=new JSONArray();java.util.HashMap<String,Integer> urlIndexes=new java.util.HashMap<>();
      for(java.util.Map.Entry<Integer,java.util.TreeMap<Integer,JSONObject>> se:grouped.entrySet())for(java.util.Map.Entry<Integer,JSONObject> ep:se.getValue().entrySet()){
-      JSONObject obj=ep.getValue();String link=obj.optString("url",obj.optString("video",""));if(!link.startsWith("http"))continue;
+      JSONObject obj=ep.getValue();String link=LocalCatalog.first(obj,"url","video","link","stream","stream_url","video_url");if(!link.startsWith("http"))continue;
       JSONObject record=new JSONObject();try{record.put("url",link);record.put("name",SeriesHelper.name(obj)+" • T"+se.getKey()+" E"+ep.getKey());urlIndexes.put(link,orderedPlaylist.length());orderedPlaylist.put(record);}catch(Exception ignored){}
      }
      seriesPlaylistJson=orderedPlaylist.toString();seriesPlaylistIndexes=urlIndexes;
      seasons.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,labels));
      seasons.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> p){}public void onItemSelected(android.widget.AdapterView<?> p,View v,int index,long id){episodes.removeAllViews();episodeRefreshers.clear();if(index>=keys.size())return;for(java.util.Map.Entry<Integer,JSONObject> entry:grouped.get(keys.get(index)).entrySet()){
-      JSONObject item=entry.getValue();String epUrl=item.optString("url",item.optString("video",""));
+      JSONObject item=entry.getValue();String epUrl=LocalCatalog.first(item,"url","video","link","stream","stream_url","video_url");
       LinearLayout line=new LinearLayout(DetailsActivity.this);line.setGravity(Gravity.CENTER_VERTICAL);line.setBackgroundColor(0xff1d2838);
       TextView row=text("▶  Episódio "+entry.getKey(),16,0xffffffff);row.setPadding(dp(14),dp(12),dp(4),dp(12));line.addView(row,new LinearLayout.LayoutParams(0,-2,1));
       TextView mark=text("",12,0xff9ca3af);mark.setGravity(Gravity.CENTER);mark.setPadding(dp(7),dp(10),dp(7),dp(10));line.addView(mark,new LinearLayout.LayoutParams(dp(110),-2));
       Runnable refresh=()->{boolean done=EpisodeWatchState.isWatched(DetailsActivity.this,epUrl);mark.setText(done?"✓ Assistido":"○ Marcar");mark.setTextColor(done?0xff63e6b0:0xffcbd5e1);};episodeRefreshers.add(refresh);refresh.run();
       mark.setOnClickListener(clickedView->{EpisodeWatchState.setWatched(DetailsActivity.this,epUrl,!EpisodeWatchState.isWatched(DetailsActivity.this,epUrl));refresh.run();});
-      LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(6);episodes.addView(line,lp);row.setOnClickListener(x->{String url=item.optString("url",item.optString("video",""));if(!url.startsWith("http")){new AlertDialog.Builder(DetailsActivity.this).setMessage("Vídeo indisponível neste episódio.").setPositiveButton("OK",null).show();return;}Intent intent=new Intent(DetailsActivity.this,PlayerActivity.class);intent.putExtra("url",url);intent.putExtra("name",SeriesHelper.name(item)+" • T"+keys.get(index)+" E"+entry.getKey());intent.putExtra("capa",item.optString("capa",selected.optString("capa","")));
+      LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(6);episodes.addView(line,lp);row.setOnClickListener(x->{String url=LocalCatalog.first(item,"url","video","link","stream","stream_url","video_url");if(!url.startsWith("http")){new AlertDialog.Builder(DetailsActivity.this).setMessage("Vídeo indisponível neste episódio.").setPositiveButton("OK",null).show();return;}Intent intent=new Intent(DetailsActivity.this,PlayerActivity.class);intent.putExtra("url",url);intent.putExtra("name",SeriesHelper.name(item)+" • T"+keys.get(index)+" E"+entry.getKey());intent.putExtra("capa",item.optString("capa",selected.optString("capa","")));
       attachPlaylist(intent,url);
       startActivity(intent);});
      }}});
-     int wantedSeason=SeriesHelper.numbers(selected)[0];int idx=keys.indexOf(wantedSeason);if(idx>=0)seasons.setSelection(idx);
+     int[] selectedNumbers=SeriesHelper.numbers(selected);if(selectedNumbers!=null){int idx=keys.indexOf(selectedNumbers[0]);if(idx>=0)seasons.setSelection(idx);}
     });
    }catch(Exception e){runOnUiThread(()->progress.setText("Não foi possível carregar episódios: "+e.getMessage()));}
   }).start();
  }
- private static void addEpisode(java.util.TreeMap<Integer,java.util.TreeMap<Integer,JSONObject>> map,String wanted,JSONObject v){if(v==null||!SeriesHelper.key(v).equals(wanted))return;int[] n=SeriesHelper.numbers(v);if(n==null||n[0]<1||n[1]<1)return;map.computeIfAbsent(n[0],k->new java.util.TreeMap<>()).put(n[1],v);}
+ private static void addEpisode(java.util.TreeMap<Integer,java.util.TreeMap<Integer,JSONObject>> map,String wanted,JSONObject v){if(v==null||!SeriesHelper.key(v).equals(wanted))return;int[] n=SeriesHelper.numbers(v);if(n==null||n[0]<1||n[1]<1)return;java.util.TreeMap<Integer,JSONObject> season=map.computeIfAbsent(n[0],k->new java.util.TreeMap<>());
+ JSONObject old=season.get(n[1]);
+ String incoming=LocalCatalog.first(v,"url","video","link","stream","stream_url","video_url");
+ String existing=old==null?"":LocalCatalog.first(old,"url","video","link","stream","stream_url","video_url");
+ if(old==null||(!existing.startsWith("http")&&incoming.startsWith("http")))season.put(n[1],v);}
 
 }
