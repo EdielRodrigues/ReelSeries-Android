@@ -260,6 +260,7 @@ public class AdminActivity extends Activity {
  }
  private int xtreamImport(String api,String base,String user,String pass,String type,java.util.HashMap<String,String> categories,String origin)throws Exception{
   java.net.HttpURLConnection c=xtreamConnect(api);int count=0;
+  java.util.ArrayList<String[]> pendingSeries=new java.util.ArrayList<>();
   android.database.sqlite.SQLiteDatabase db=catalog.getWritableDatabase();boolean transaction=false;
   try(java.io.InputStream in=c.getInputStream();android.util.JsonReader r=new android.util.JsonReader(new java.io.InputStreamReader(in,"UTF-8"))){
    if(r.peek()!=android.util.JsonToken.BEGIN_ARRAY)throw new IOException("Lista "+type+" não retornou JSON válido");
@@ -285,11 +286,59 @@ public class AdminActivity extends Activity {
     String cat=categories.get(category);if(cat==null||cat.isEmpty())cat=type.equals("live")?"TV / IPTV":type.equals("movie")?"Filmes":"Séries";
     String key="xtream_"+LocalCatalog.hash(base+"|"+user+"|"+type+"|"+id);
     catalog.save(db,key,name,cat,cover,url,description,cat,origin);count++;
+    if(type.equals("series"))pendingSeries.add(new String[]{id,name,cat,cover,description,key});
     if(count%150==0){db.setTransactionSuccessful();db.endTransaction();transaction=false;msg("Xtream "+type+": "+count+" registros...");db.beginTransaction();transaction=true;}
    }
    r.endArray();db.setTransactionSuccessful();db.endTransaction();transaction=false;
+   // Consultar episódios fora da transação da listagem para não bloquear SQLite durante a rede.
+   if(type.equals("series")){
+    int episodes=0,failed=0,checked=0;
+    for(String[] entry:pendingSeries){
+     checked++;
+     try{episodes+=xtreamSeriesEpisodes(base,user,pass,entry,origin);}
+     catch(Exception e){failed++;if(failed<=3)msg("Série sem episódios: "+entry[1]+" ("+xtreamSafeError(e)+")");}
+     if(checked%100==0)msg("Xtream séries: "+episodes+" episódios salvos; "+failed+" consultas falharam");
+    }
+    msg("Xtream: "+episodes+" episódios de séries salvos; "+failed+" séries com falha.");
+    count+=episodes;
+   }
    return count;
   }finally{if(transaction)db.endTransaction();c.disconnect();}
+ }
+ private int xtreamSeriesEpisodes(String base,String user,String pass,String[] series,String origin)throws Exception{
+  String api=base+"/player_api.php?username="+java.net.URLEncoder.encode(user,"UTF-8")
+   +"&password="+java.net.URLEncoder.encode(pass,"UTF-8")
+   +"&action=get_series_info&series_id="+java.net.URLEncoder.encode(series[0],"UTF-8");
+  java.net.HttpURLConnection connection=xtreamConnect(api);
+  org.json.JSONObject info;
+  try(java.io.InputStream in=connection.getInputStream()){
+   java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();byte[] buffer=new byte[8192];int n;
+   while((n=in.read(buffer))!=-1){out.write(buffer,0,n);if(out.size()>12*1024*1024)throw new IOException("Lista de episódios grande demais");}
+   info=new org.json.JSONObject(out.toString("UTF-8"));
+  }finally{connection.disconnect();}
+  org.json.JSONObject seasons=info.optJSONObject("episodes");if(seasons==null)return 0;
+  int saved=0;
+  android.database.sqlite.SQLiteDatabase db=catalog.getWritableDatabase();
+  db.beginTransaction();
+  try{
+   java.util.Iterator<String> keys=seasons.keys();
+   while(keys.hasNext()){
+    String season=keys.next();org.json.JSONArray episodes=seasons.optJSONArray(season);if(episodes==null)continue;
+    for(int i=0;i<episodes.length();i++){
+     org.json.JSONObject ep=episodes.optJSONObject(i);if(ep==null)continue;
+     String episodeId=ep.optString("id","").trim();if(!episodeId.matches("[0-9]+"))continue;
+     String ext=ep.optString("container_extension","mp4").replaceAll("[^a-zA-Z0-9]","");if(ext.isEmpty())ext="mp4";
+     String seasonNum=season.replaceAll("[^0-9]","");if(seasonNum.isEmpty())seasonNum="1";
+     String episodeNum=ep.optString("episode_num",String.valueOf(i+1)).replaceAll("[^0-9]","");if(episodeNum.isEmpty())episodeNum=String.valueOf(i+1);
+     String url=base+"/series/"+java.net.URLEncoder.encode(user,"UTF-8")+"/"+java.net.URLEncoder.encode(pass,"UTF-8")+"/"+episodeId+"."+ext;
+     String name=series[1]+" S"+seasonNum+"E"+episodeNum;
+     String key="xtream_"+LocalCatalog.hash(base+"|"+user+"|episode|"+series[0]+"|"+episodeId);
+     catalog.save(db,key,name,series[2],series[3],url,series[4],series[2],origin);saved++;
+    }
+   }
+   db.setTransactionSuccessful();
+  }finally{db.endTransaction();}
+  return saved;
  }
  private void iptvLinkDialog(){
   if(!authorized){msg("Entre como administrador para importar IPTV.");return;}
