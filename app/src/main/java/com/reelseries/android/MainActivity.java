@@ -186,7 +186,8 @@ public class MainActivity extends Activity {
      if(isFinishing()||categories==null)return;
      for(String c:cats)if(!catNames.contains(c))catNames.add(c);
      ((ArrayAdapter)categories.getAdapter()).notifyDataSetChanged();
-     getSharedPreferences("reel_folder_cache_v1",MODE_PRIVATE).edit().remove("folders").apply();\n      invalidateSavedPages();
+     getSharedPreferences("reel_folder_cache_v1",MODE_PRIVATE).edit().remove("folders").apply();
+      invalidateSavedPages();
      // Atualiza o feed; o próximo menu reconstruirá e salvará as pastas uma única vez.
      localCatalogCount=n;resetFeed();
      if(status!=null)status.setText("Catálogo salvo no celular • "+n+" registros sincronizados");
