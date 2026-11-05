@@ -196,7 +196,7 @@ public class PlayerActivity extends Activity {
   FrameLayout.LayoutParams sp=new FrameLayout.LayoutParams((int)(105*getResources().getDisplayMetrics().density),(int)(24*getResources().getDisplayMetrics().density),Gravity.TOP|Gravity.END);
   sp.topMargin=(int)(57*getResources().getDisplayMetrics().density);sp.rightMargin=(int)(6*getResources().getDisplayMetrics().density);
   root.addView(castStateLabel,sp);castStateLabel.setVisibility(View.GONE);
-  castButton.setOnClickListener(v->showCastDevices());
+  castButton.setOnClickListener(v->showTransmissionOptions());
   castListener=new SessionManagerListener<CastSession>(){
    @Override public void onSessionStarted(CastSession session,String id){sendToTv(session);updateCastState();handler.postDelayed(()->showTvControls(),650);}
    @Override public void onSessionResumed(CastSession session,boolean wasSuspended){casting=true;observeRemote(session.getRemoteMediaClient());pauseLocal();updateCastState();handler.post(()->showTvControls());}
@@ -214,6 +214,27 @@ public class PlayerActivity extends Activity {
  }
 
  if(b!=null){savedPosition=b.getLong("position",0);playWhenReady=b.getBoolean("playing",true);restored=true;playlistIndex=b.getInt("playlistIndex",playlistIndex);url=b.getString("url",url);}
+ }
+ private void showTransmissionOptions(){
+  final String[] options={"Google Cast / Chromecast","Smart TV compatível (Google Cast)","DLNA / UPnP (aplicativo externo)","Cast do WebView (se o site oferecer)","Espelhamento Smart View / Android","Player externo"};
+  new AlertDialog.Builder(this).setTitle("Transmitir para televisão").setItems(options,(d,which)->{
+   switch(which){
+    case 0:case 1:showCastDevices();break;
+    case 2:openExternalPlayer(true);break;
+    case 3:new AlertDialog.Builder(this).setTitle("WebView Cast").setMessage("O botão de Cast do WebView depende do próprio site oferecer transmissão. Não é um protocolo universal e não transmite qualquer URL.").setPositiveButton("OK",null).show();break;
+    case 4:new AlertDialog.Builder(this).setTitle("Espelhamento de tela").setMessage("No Samsung, abra o painel rápido e selecione Smart View. Ou tente as configurações de transmissão do Android.").setNegativeButton("Cancelar",null).setPositiveButton("Abrir configurações",(dd,w)->{try{startActivity(new Intent("android.settings.CAST_SETTINGS"));}catch(Exception e){startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS));}}).show();break;
+    case 5:openExternalPlayer(false);break;
+   }
+  }).setNegativeButton("Cancelar",null).show();
+ }
+ private void openExternalPlayer(boolean dlna){
+  if(url==null||!url.startsWith("http"))return;
+  try{
+   Intent i=new Intent(Intent.ACTION_VIEW);
+   i.setDataAndType(android.net.Uri.parse(url),url.toLowerCase(java.util.Locale.ROOT).contains(".m3u8")?"application/vnd.apple.mpegurl":"video/*");
+   i.addCategory(Intent.CATEGORY_DEFAULT);
+   startActivity(Intent.createChooser(i,dlna?"Escolher player com DLNA / UPnP":"Abrir vídeo em outro player"));
+  }catch(Exception e){new AlertDialog.Builder(this).setTitle("Player não disponível").setMessage("Instale um player compatível. Para DLNA, o aplicativo externo precisa oferecer transmissão para a TV. Links protegidos ou autenticados podem não funcionar.").setPositiveButton("OK",null).show();}
  }
  private void showCastDevices(){
   if(usingWeb){Toast.makeText(this,"Transmissão deste site depende do próprio player incorporado",Toast.LENGTH_LONG).show();return;}
