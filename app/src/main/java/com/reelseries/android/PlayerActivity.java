@@ -379,8 +379,8 @@ public class PlayerActivity extends Activity {
  }
  private String hlsCandidate(String link){
   if(link==null)return null;
-  if(link.toLowerCase(java.util.Locale.ROOT).matches("https?://[^?#]+/live/[^?#]+\.ts([?#].*)?"))
-   return link.replaceFirst("(?i)\.ts(?=([?#]|$))",".m3u8");
+  if(link.toLowerCase(java.util.Locale.ROOT).matches("https?://[^?#]+/live/[^?#]+\\.ts([?#].*)?"))
+   return link.replaceFirst("(?i)\\.ts(?=([?#]|$))",".m3u8");
   return null;
  }
  private boolean isVerifiedHls(String link){
