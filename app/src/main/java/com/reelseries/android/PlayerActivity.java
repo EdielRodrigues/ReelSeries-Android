@@ -236,7 +236,14 @@ public class PlayerActivity extends Activity {
    startActivity(Intent.createChooser(i,dlna?"Escolher player com DLNA / UPnP":"Abrir vídeo em outro player"));
   }catch(Exception e){new AlertDialog.Builder(this).setTitle("Player não disponível").setMessage("Instale um player compatível. Para DLNA, o aplicativo externo precisa oferecer transmissão para a TV. Links protegidos ou autenticados podem não funcionar.").setPositiveButton("OK",null).show();}
  }
+  private void requestCastNotificationPermission(){
+   if(android.os.Build.VERSION.SDK_INT>=33 &&
+      checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
+    requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},1027);
+   }
+  }
  private void showCastDevices(){
+   requestCastNotificationPermission();
   if(usingWeb){Toast.makeText(this,"Transmissão deste site depende do próprio player incorporado",Toast.LENGTH_LONG).show();return;}
   if(castContext!=null){
    CastSession current=castContext.getSessionManager().getCurrentCastSession();
@@ -357,20 +364,48 @@ public class PlayerActivity extends Activity {
   if(observedRemote!=null){observedRemote.unregisterCallback(castPlaybackCallback);observedRemote=null;}
  }
  private void pauseLocal(){if(player!=null){saveProgress();player.pause();}}
+ private boolean isLiveCastLink(String link){
+  if(link==null)return false;
+  String lower=link.toLowerCase(java.util.Locale.ROOT);
+  return isXtreamLive(link)||lower.matches("https?://[^?#]+/live/[^?#]+([?#].*)?")||(lower.contains(".ts")||lower.contains(".m3u8")) && (lower.contains("/live/")||lower.contains("/tv/"));
+ }
+ private String castMimeType(String link){
+  String lower=link.toLowerCase(java.util.Locale.ROOT);
+  if(lower.contains(".m3u8"))return "application/x-mpegURL";
+  if(lower.contains(".mpd"))return "application/dash+xml";
+  if(lower.matches("https?://[^?#]+\\.ts([?#].*)?"))return "video/mp2t";
+  if(lower.contains(".mp4"))return "video/mp4";
+  return isLiveCastLink(link)?"video/mp2t":"video/mp4";
+ }
  private void sendToTv(CastSession session){
   if(session==null||!session.isConnected()||url==null||usingWeb)return;
   RemoteMediaClient remote=session.getRemoteMediaClient();if(remote==null)return;
   observeRemote(remote);
   remoteWasPlaying=false;nearEndChecks=0;
-  MediaMetadata metadata=new MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE);
+  final boolean live=isLiveCastLink(url);
+  MediaMetadata metadata=new MediaMetadata(live?MediaMetadata.MEDIA_TYPE_TV_SHOW:MediaMetadata.MEDIA_TYPE_MOVIE);
   metadata.putString(MediaMetadata.KEY_TITLE,displayName);
-  String type=url.toLowerCase(java.util.Locale.ROOT).contains(".m3u8")?"application/x-mpegURL":url.toLowerCase(java.util.Locale.ROOT).contains(".mpd")?"application/dash+xml":"video/mp4";
-  MediaInfo info=new MediaInfo.Builder(url).setStreamType(MediaInfo.STREAM_TYPE_BUFFERED).setContentType(type).setMetadata(metadata).build();
-  long position=changingCastEpisode?stored(url):(player!=null?Math.max(0,player.getCurrentPosition()):stored(url));
-  pauseLocal();casting=true;updateCastState();
-  remote.load(info,new MediaLoadOptions.Builder().setAutoplay(true).setPlayPosition(position).build());
+  String type=castMimeType(url);
+  MediaInfo info=new MediaInfo.Builder(url)
+   .setStreamType(live?MediaInfo.STREAM_TYPE_LIVE:MediaInfo.STREAM_TYPE_BUFFERED)
+   .setContentType(type).setMetadata(metadata).build();
+  long position=live?0:(changingCastEpisode?stored(url):(player!=null?Math.max(0,player.getCurrentPosition()):stored(url)));
+  casting=true;updateCastState();
+  remote.load(info,new MediaLoadOptions.Builder().setAutoplay(true).setPlayPosition(position).build())
+   .setResultCallback(result->{
+    if(!result.getStatus().isSuccess()){
+     android.util.Log.e("ReelSeriesCast","Falha no envio: "+result.getStatus().getStatusCode()+" url="+url);
+     runOnUiThread(()->{
+      casting=false;updateCastState();
+      new AlertDialog.Builder(PlayerActivity.this).setTitle("Falha na transmissão")
+       .setMessage("O Chromecast não conseguiu carregar este vídeo. Em TV ao vivo, o endereço precisa ser acessível diretamente pela televisão e o formato deve ser compatível. Tente a opção DLNA ou espelhamento.")
+       .setPositiveButton("OK",null).show();
+      if(player!=null)player.play();
+     });
+    }else{runOnUiThread(()->pauseLocal());}
+   });
   changingCastEpisode=false;
-  Toast.makeText(this,"Enviando para a TV",Toast.LENGTH_SHORT).show();
+  Toast.makeText(this,live?"Enviando TV ao vivo para a TV":"Enviando para a TV",Toast.LENGTH_SHORT).show();
  }
  @Override protected void onStart(){super.onStart();
  if(castContext!=null&&castListener!=null){
