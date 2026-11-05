@@ -377,33 +377,88 @@ public class PlayerActivity extends Activity {
   if(lower.contains(".mp4"))return "video/mp4";
   return isLiveCastLink(link)?"video/mp2t":"video/mp4";
  }
+ private String hlsCandidate(String link){
+  if(link==null)return null;
+  if(link.toLowerCase(java.util.Locale.ROOT).matches("https?://[^?#]+/live/[^?#]+\.ts([?#].*)?"))
+   return link.replaceFirst("(?i)\.ts(?=([?#]|$))",".m3u8");
+  return null;
+ }
+ private boolean isVerifiedHls(String link){
+  java.net.HttpURLConnection connection=null;
+  try{
+   connection=(java.net.HttpURLConnection)new java.net.URL(link).openConnection();
+   connection.setConnectTimeout(6500);connection.setReadTimeout(6500);
+   connection.setRequestProperty("Accept","application/vnd.apple.mpegurl, application/x-mpegURL, */*");
+   connection.setRequestProperty("User-Agent","ReelSeries/Android");
+   connection.setInstanceFollowRedirects(true);
+   if(connection.getResponseCode()!=200)return false;
+   java.io.InputStream input=connection.getInputStream();
+   byte[] bytes=new byte[512];int count=input.read(bytes);input.close();
+   if(count<=0)return false;
+   String header=new String(bytes,0,count,java.nio.charset.StandardCharsets.UTF_8).trim();
+   return header.startsWith("#EXTM3U");
+  }catch(Exception ignored){return false;}
+  finally{if(connection!=null)connection.disconnect();}
+ }
+ private void showLiveCastUnavailable(){
+  if(isFinishing())return;
+  new AlertDialog.Builder(this).setTitle("TV ao vivo: formato incompatível")
+   .setMessage("O canal funciona no celular, mas o Chromecast não conseguiu reproduzir o link diretamente. Não é possível transformar MPEG-TS em HLS apenas mudando a extensão. Você pode espelhar a tela pelo Smart View para assistir na televisão.")
+   .setNegativeButton("Fechar",null)
+   .setPositiveButton("Abrir espelhamento",(d,w)->{
+    try{startActivity(new Intent("android.settings.CAST_SETTINGS"));}
+    catch(Exception e){try{startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS));}catch(Exception ignored){}}
+   }).show();
+ }
  private void sendToTv(CastSession session){
   if(session==null||!session.isConnected()||url==null||usingWeb)return;
   RemoteMediaClient remote=session.getRemoteMediaClient();if(remote==null)return;
-  observeRemote(remote);
-  remoteWasPlaying=false;nearEndChecks=0;
-  final boolean live=isLiveCastLink(url);
+  final String originalUrl=url;
+  final boolean live=isLiveCastLink(originalUrl);
+  final String candidate=live?hlsCandidate(originalUrl):null;
+  if(candidate!=null){
+   Toast.makeText(this,"Verificando versão HLS do canal...",Toast.LENGTH_SHORT).show();
+   new Thread(()->{
+    boolean available=isVerifiedHls(candidate);
+    runOnUiThread(()->{
+     if(isFinishing()||!originalUrl.equals(url)||!session.isConnected())return;
+     // Use the original stream if HLS is unavailable; never send an unverified URL.
+     loadCastMedia(session,remote,available?candidate:originalUrl,live);
+    });
+   },"ReelCastHlsCheck").start();
+  }else loadCastMedia(session,remote,originalUrl,live);
+ }
+ private void loadCastMedia(CastSession session,RemoteMediaClient remote,String castUrl,boolean live){
+  observeRemote(remote);remoteWasPlaying=false;nearEndChecks=0;
   MediaMetadata metadata=new MediaMetadata(live?MediaMetadata.MEDIA_TYPE_TV_SHOW:MediaMetadata.MEDIA_TYPE_MOVIE);
   metadata.putString(MediaMetadata.KEY_TITLE,displayName);
-  String type=castMimeType(url);
-  MediaInfo info=new MediaInfo.Builder(url)
+  MediaInfo info=new MediaInfo.Builder(castUrl)
    .setStreamType(live?MediaInfo.STREAM_TYPE_LIVE:MediaInfo.STREAM_TYPE_BUFFERED)
-   .setContentType(type).setMetadata(metadata).build();
+   .setContentType(castMimeType(castUrl)).setMetadata(metadata).build();
   long position=live?0:(changingCastEpisode?stored(url):(player!=null?Math.max(0,player.getCurrentPosition()):stored(url)));
   casting=true;updateCastState();
   remote.load(info,new MediaLoadOptions.Builder().setAutoplay(true).setPlayPosition(position).build())
-   .setResultCallback(result->{
+   .setResultCallback(result->runOnUiThread(()->{
     if(!result.getStatus().isSuccess()){
-     android.util.Log.e("ReelSeriesCast","Falha no envio: "+result.getStatus().getStatusCode()+" url="+url);
-     runOnUiThread(()->{
-      casting=false;updateCastState();
-      new AlertDialog.Builder(PlayerActivity.this).setTitle("Falha na transmissão")
-       .setMessage("O Chromecast não conseguiu carregar este vídeo. Em TV ao vivo, o endereço precisa ser acessível diretamente pela televisão e o formato deve ser compatível. Tente a opção DLNA ou espelhamento.")
-       .setPositiveButton("OK",null).show();
-      if(player!=null)player.play();
-     });
-    }else{runOnUiThread(()->pauseLocal());}
-   });
+     android.util.Log.e("ReelSeriesCast","Falha no carregamento Cast: "+result.getStatus().getStatusCode());
+     if(live)showLiveCastUnavailable();
+     else Toast.makeText(this,"Não foi possível carregar o vídeo na TV",Toast.LENGTH_LONG).show();
+     if(player!=null)player.play();
+    }else{
+     // A successful LOAD does not mean the receiver has started playing.
+     if(!live)pauseLocal();
+     else handler.postDelayed(()->{
+      if(isFinishing()||!session.isConnected())return;
+      RemoteMediaClient r=session.getRemoteMediaClient();
+      MediaStatus status=r==null?null:r.getMediaStatus();
+      if(status!=null&&status.getPlayerState()==MediaStatus.PLAYER_STATE_PLAYING){pauseLocal();return;}
+      if(status==null||status.getPlayerState()==MediaStatus.PLAYER_STATE_IDLE||
+        status.getPlayerState()==MediaStatus.PLAYER_STATE_BUFFERING){
+       showLiveCastUnavailable();
+      }
+     },18000);
+    }
+   }));
   changingCastEpisode=false;
   Toast.makeText(this,live?"Enviando TV ao vivo para a TV":"Enviando para a TV",Toast.LENGTH_SHORT).show();
  }
