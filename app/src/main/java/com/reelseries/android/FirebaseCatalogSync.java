@@ -40,7 +40,7 @@ public final class FirebaseCatalogSync {
  private static JSONObject item(Cursor c)throws Exception{
   JSONObject o=new JSONObject();for(int i=0;i<c.getColumnCount();i++)o.put(c.getColumnName(i),c.isNull(i)?JSONObject.NULL:c.getString(i));return o;
  }
- /** Envia somente IDs ausentes no Firebase. Nunca sobrescreve registros existentes. */
+ /** Envia novos IDs e preenche URLs vazias somente quando o banco local tem URL. */
  public static int upload(Context ctx,LocalCatalog db,String origin,String token,LocalCatalog.Progress progress)throws Exception{
   // Consulta apenas as chaves: nao baixa nem modifica os 118 mil registros completos.
   String keysJson=request(endpoint(ctx,"items",token)+"&shallow=true","GET",null);
@@ -58,7 +58,27 @@ public final class FirebaseCatalogSync {
    try(Cursor c=sql.rawQuery(query,args)){
     while(c.moveToNext()){
      String id=c.getString(0);last=id;scanned++;
-     if(existing.add(id))patch.put(id,item(c));
+     if(existing.add(id)){
+      patch.put(id,item(c));
+     }else{
+      // Corrige somente links ausentes no Firebase; nunca substitui um link valido.
+      String localUrl=c.getString(4);
+      if(localUrl!=null&&!localUrl.trim().isEmpty()){
+       String remote=request(endpoint(ctx,"items/"+URLEncoder.encode(id,"UTF-8"),token),"GET",null);
+       if(remote.equals("null")){
+        patch.put(id,item(c));
+       }else{
+        JSONObject current=new JSONObject(remote);
+        String remoteUrl=current.optString("url","").trim();
+        if(remoteUrl.isEmpty()||remoteUrl.equalsIgnoreCase("null")){
+         // PATCH somente no campo url para preservar os outros dados do registro.
+         JSONObject urlOnly=new JSONObject();urlOnly.put("url",localUrl);
+         request(endpoint(ctx,"items/"+URLEncoder.encode(id,"UTF-8"),token),"PATCH",urlOnly.toString());
+         sent++;progress.update(sent);
+        }
+       }
+      }
+     }
     }
    }
    if(scanned==0)break;
@@ -168,7 +188,13 @@ public final class FirebaseCatalogSync {
    int received=0;SQLiteDatabase sql=db.getWritableDatabase();sql.beginTransaction();
    try{
     for(String key:keys){if(last!=null&&key.equals(last))continue;JSONObject o=items.optJSONObject(key);if(o==null)continue;
-     String id=o.optString("id",key);db.save(sql,id,o.optString("nome"),o.optString("categoria"),o.optString("capa"),o.optString("url"),o.optString("sinopse"),o.optString("grupo"),o.optString("origem","Firebase"));count++;received++;
+     String id=o.optString("id",key);String incomingUrl=o.optString("url","");
+     if(incomingUrl.trim().isEmpty()){
+      try(Cursor old=sql.rawQuery("SELECT url FROM media WHERE id=?",new String[]{id})){
+       if(old.moveToFirst()&&!old.isNull(0))incomingUrl=old.getString(0);
+      }
+     }
+     db.save(sql,id,o.optString("nome"),o.optString("categoria"),o.optString("capa"),incomingUrl,o.optString("sinopse"),o.optString("grupo"),o.optString("origem","Firebase"));count++;received++;
     }
     sql.setTransactionSuccessful();
    }finally{sql.endTransaction();}
