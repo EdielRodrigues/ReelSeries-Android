@@ -117,7 +117,8 @@ public class LocalCatalog extends SQLiteOpenHelper {
  public ArrayList<JSONObject> episodeCandidates(String seriesName){
   ArrayList<JSONObject> result=new ArrayList<>();
   if(seriesName==null||seriesName.trim().isEmpty())return result;
-  String escaped=seriesName.replace("\\","\\\\").replace("%","\\%").replace("_","\\_");
+  String lookup=seriesName.trim().replaceAll("\\s*\\(\\d{4}\\)\\s*$","").replaceAll("\\s+(?:19|20)\\d{2}\\s*$","").trim();
+  String escaped=lookup.replace("\\","\\\\").replace("%","\\%").replace("_","\\_");
   String sql="SELECT id,nome,categoria,capa,url,sinopse FROM media WHERE nome LIKE ? ESCAPE '\\' ORDER BY nome";
   try(Cursor c=getReadableDatabase().rawQuery(sql,new String[]{escaped+"%"})){
    while(c.moveToNext()){

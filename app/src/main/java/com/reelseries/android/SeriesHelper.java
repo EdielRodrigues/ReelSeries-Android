@@ -12,7 +12,15 @@ public final class SeriesHelper {
  private static int num(String s){try{return Integer.parseInt(s);}catch(Exception e){return 0;}}
  public static String name(JSONObject o){String s=o.optString("serie",o.optString("nome","")).trim();
   s=s.replaceAll("(?i)\\s*[-–:]?\\s*[sStT]\\d{1,3}[eExX]\\d{1,4}.*$","");s=s.replaceAll("(?i)\\s*[-–:]?\\s*(?:temporada|temp\\.?|season)\\s*\\d+.*$","");s=s.replaceAll("(?i)\\s*[-–:]?\\s*(?:epis[oó]dio|episode|ep\\.?)\\s*\\d+.*$","");return s.trim();}
- public static String key(JSONObject o){return name(o).toLowerCase(Locale.ROOT).replaceAll("\\s+"," ");}
+ public static String key(JSONObject o){return normalizedName(name(o));}
+ public static String normalizedName(String name){
+  String s=name==null?"":name.toLowerCase(Locale.ROOT).trim();
+  // Xtream and imported JSON frequently use different trailing release-year labels.
+  s=s.replaceAll("(?i)\\s*\\(\\d{4}\\)\\s*$","");
+  s=s.replaceAll("(?i)\\s*[-–]?\\s*(?:19|20)\\d{2}\\s*$","");
+  s=java.text.Normalizer.normalize(s,java.text.Normalizer.Form.NFD).replaceAll("\\p{M}+","");
+  return s.replaceAll("[^\\p{L}\\p{N}]+"," ").trim().replaceAll("\\s+"," ");
+ }
  public static boolean episode(JSONObject o){return numbers(o)!=null || (o.optInt("temporada",0)>0 && o.optInt("episodio",0)>0);}
  public static boolean isSeries(JSONObject o){String c=o.optString("categoria","").toLowerCase(Locale.ROOT);String t=o.optString("tipo","").toLowerCase(Locale.ROOT);return t.equals("serie")||t.equals("série")||c.contains("serie")||c.contains("série")||c.contains("novela")||c.contains("episod")||episode(o);}
 }
