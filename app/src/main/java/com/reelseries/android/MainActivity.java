@@ -186,7 +186,7 @@ public class MainActivity extends Activity {
      if(isFinishing()||categories==null)return;
      for(String c:cats)if(!catNames.contains(c))catNames.add(c);
      ((ArrayAdapter)categories.getAdapter()).notifyDataSetChanged();
-     getSharedPreferences("reel_folder_cache_v1",MODE_PRIVATE).edit().remove("folders").apply();
+     getSharedPreferences("reel_folder_cache_v1",MODE_PRIVATE).edit().remove("folders").apply();\n      invalidateSavedPages();
      // Atualiza o feed; o próximo menu reconstruirá e salvará as pastas uma única vez.
      localCatalogCount=n;resetFeed();
      if(status!=null)status.setText("Catálogo salvo no celular • "+n+" registros sincronizados");
@@ -243,6 +243,49 @@ public class MainActivity extends Activity {
   void resetFeed(){if(search==null||grid==null||adapter==null)return;requestVersion++;currentPage=0;pageOffset=0;endReached=false;loadingPage=false;bundledPaging=false;localPages.clear();shown.clear();adapter.notifyDataSetChanged();updateGridHeight();loadNextPage();}
   void openPage(int target){if(loadingPage||target<0||(target>currentPage&&endReached))return;currentPage=target;requestVersion++;pageOffset=target*PAGE_SIZE;endReached=false;localPages.clear();shown.clear();adapter.notifyDataSetChanged();updateGridHeight();loadNextPage();}
  boolean matches(JSONObject o,String query){String name=o.optString("nome","");String cat=o.optString("categoria","");String c=cat.toLowerCase(java.util.Locale.ROOT);String n=name.toLowerCase(java.util.Locale.ROOT);if(!n.contains(query))return false;if(!selected.equals("Todas")&&!selected.equals(cat))return false;boolean tv=c.contains("iptv")||c.contains("canal")||c.contains("tv ao vivo")||c.equals("tv")||c.contains("televis");boolean series=SeriesHelper.isSeries(o);if(mode.equals("TV / IPTV"))return tv;if(mode.equals("Séries"))return series&&!tv;if(mode.equals("Filmes"))return !tv&&!series&&(c.contains("filme")||c.contains("movie")||c.contains("cinema"));return true;}
+  // Cache persistente por pasta, filtro, busca e pagina (nao e apagado ao fechar o app).
+  java.io.File pageCacheFile(String group,String q,String modeName,String category,int offset){
+   String key=getSharedPreferences("reel_page_cache_v1",MODE_PRIVATE).getInt("generation",0)
+    +"|"+group+"|"+q+"|"+modeName+"|"+category+"|"+offset+"|"+PAGE_SIZE;
+   try{
+    byte[] digest=java.security.MessageDigest.getInstance("SHA-256").digest(key.getBytes("UTF-8"));
+    StringBuilder hex=new StringBuilder();for(byte b:digest)hex.append(String.format(java.util.Locale.ROOT,"%02x",b&255));
+    java.io.File folder=new java.io.File(getFilesDir(),"reel_pages_v1");
+    if(!folder.exists())folder.mkdirs();
+    return new java.io.File(folder,hex.toString()+".json");
+   }catch(Exception e){return null;}
+  }
+  JSONObject readSavedPage(java.io.File file){
+   if(file==null||!file.isFile())return null;
+   try(java.io.FileInputStream in=new java.io.FileInputStream(file);
+       java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()){
+    byte[] buffer=new byte[8192];int n;
+    while((n=in.read(buffer))!=-1)out.write(buffer,0,n);
+    return new JSONObject(out.toString("UTF-8"));
+   }catch(Exception e){return null;}
+  }
+  void savePage(java.io.File file,ArrayList<JSONObject> page,boolean hasMore){
+   if(file==null)return;
+   try{
+    JSONObject payload=new JSONObject();JSONArray items=new JSONArray();
+    for(JSONObject item:page)items.put(item);
+    payload.put("items",items);payload.put("next",hasMore);
+    java.io.File temp=new java.io.File(file.getParentFile(),file.getName()+".tmp");
+    try(java.io.FileOutputStream out=new java.io.FileOutputStream(temp)){
+     out.write(payload.toString().getBytes("UTF-8"));out.getFD().sync();
+    }
+    if(!temp.renameTo(file)){temp.delete();}
+   }catch(Exception e){android.util.Log.w("ReelPageCache","Falha ao salvar pagina",e);}
+  }
+  void invalidateSavedPages(){
+   getSharedPreferences("reel_page_cache_v1",MODE_PRIVATE).edit()
+    .putInt("generation",getSharedPreferences("reel_page_cache_v1",MODE_PRIVATE).getInt("generation",0)+1).apply();
+   pool.execute(()->{
+    java.io.File folder=new java.io.File(getFilesDir(),"reel_pages_v1");
+    java.io.File[] files=folder.listFiles();
+    if(files!=null)for(java.io.File f:files)if(f.isFile())f.delete();
+   });
+  }
   void loadNextPage(){
    if(loadingPage||pool.isShutdown())return;
    loadingPage=true;final int version=requestVersion,offset=pageOffset;
@@ -252,12 +295,23 @@ public class MainActivity extends Activity {
    if(pageLabel!=null)pageLabel.setText("Página "+(currentPage+1));
    pool.execute(()->{
     try{
-     ArrayList<JSONObject> page;
-     try(LocalCatalog db=new LocalCatalog(this)){
-      page=groupFilter.isEmpty()?db.feed(q,m,cat,offset,PAGE_SIZE+1):db.catalogFolderFeed(groupFilter,q,offset,PAGE_SIZE+1);
+     java.io.File file=pageCacheFile(groupFilter,q,m,cat,offset);
+     JSONObject saved=readSavedPage(file);
+     ArrayList<JSONObject> page=new ArrayList<>();
+     boolean hasNext;
+     if(saved!=null&&saved.optJSONArray("items")!=null){
+      JSONArray items=saved.optJSONArray("items");
+      for(int i=0;i<items.length();i++){JSONObject item=items.optJSONObject(i);if(item!=null)page.add(item);}
+      hasNext=saved.optBoolean("next",false);
+     }else{
+      try(LocalCatalog db=new LocalCatalog(this)){
+       page=groupFilter.isEmpty()?db.feed(q,m,cat,offset,PAGE_SIZE+1):db.catalogFolderFeed(groupFilter,q,offset,PAGE_SIZE+1);
+      }
+      hasNext=page.size()>PAGE_SIZE;
+      if(hasNext)page.remove(page.size()-1);
+      savePage(file,page,hasNext);
      }
-     final boolean next=page.size()>PAGE_SIZE;
-     if(next)page.remove(page.size()-1);
+     final boolean next=hasNext;
      final ArrayList<JSONObject> result=page;
      runOnUiThread(()->{if(version!=requestVersion)return;
       localPages.clear();localPages.addAll(result);pageOffset=offset;
