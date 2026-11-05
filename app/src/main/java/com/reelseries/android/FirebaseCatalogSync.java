@@ -153,7 +153,17 @@ public final class FirebaseCatalogSync {
    int received=0;SQLiteDatabase sql=db.getWritableDatabase();sql.beginTransaction();
    try{
     for(String key:keys){if(last!=null&&key.equals(last))continue;JSONObject o=items.optJSONObject(key);if(o==null)continue;
-     String id=o.optString("id",key);db.save(sql,id,o.optString("nome"),o.optString("categoria"),o.optString("capa"),o.optString("url"),o.optString("sinopse"),o.optString("grupo"),o.optString("origem","Firebase"));count++;received++;
+     String id=o.optString("id",key);
+     // Aceita os campos de reprodução usados por diferentes versões do catálogo.
+     String stream=LocalCatalog.first(o,"url","video","link","stream","stream_url","video_url","play_url","source","src");
+     if(!stream.startsWith("http://")&&!stream.startsWith("https://"))stream="";
+     // Uma sincronização com URL vazia não deve apagar um link válido já salvo.
+     if(stream.isEmpty()){
+      try(Cursor previous=sql.rawQuery("SELECT url FROM media WHERE id=?",new String[]{id})){
+       if(previous.moveToFirst()){String saved=previous.getString(0);if(saved!=null&&saved.startsWith("http"))stream=saved;}
+      }
+     }
+     db.save(sql,id,LocalCatalog.first(o,"nome","titulo","title","name"),LocalCatalog.first(o,"categoria","category","tipo"),LocalCatalog.first(o,"capa","poster","imagem","image"),stream,LocalCatalog.first(o,"sinopse","descricao","description"),LocalCatalog.first(o,"grupo","group"),o.optString("origem","Firebase"));count++;received++;
     }
     sql.setTransactionSuccessful();
    }finally{sql.endTransaction();}

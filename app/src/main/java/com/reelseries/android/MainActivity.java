@@ -163,7 +163,8 @@ public class MainActivity extends Activity {
     if(last>0 && now>=last && now-last<CLOUD_INTERVAL_MS)return;
     String revision=FirebaseCatalogSync.revision(this);
     String previous=pref.getString("revision","");
-    boolean first=!pref.getBoolean("download_complete",false);
+    // Uma atualização corretiva única reprocessa os campos alternativos de URL.
+    boolean first=!pref.getBoolean("download_complete",false) || !pref.getBoolean("url_fields_fixed_v1",false);
     if(!first && revision.equals(previous)){
      pref.edit().putLong("last_check",System.currentTimeMillis()).apply();return;
     }
@@ -175,7 +176,7 @@ public class MainActivity extends Activity {
      cats=db.categories();
     }
     // Commit the timestamp ONLY after a successful complete download.
-    pref.edit().putString("revision",revision).putBoolean("download_complete",true)
+    pref.edit().putString("revision",revision).putBoolean("download_complete",true).putBoolean("url_fields_fixed_v1",true)
      .putLong("last_check",System.currentTimeMillis()).apply();
     runOnUiThread(()->{
      if(isFinishing()||categories==null)return;
