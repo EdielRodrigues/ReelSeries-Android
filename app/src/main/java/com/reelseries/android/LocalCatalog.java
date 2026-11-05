@@ -55,6 +55,39 @@ public class LocalCatalog extends SQLiteOpenHelper {
   }
   java.util.LinkedHashMap<String,Integer> result=new java.util.LinkedHashMap<>();result.putAll(counts);return result;
  }
+ // Pastas abrangem TODO o catálogo salvo: filmes, séries e canais IPTV.
+ // Cada registro entra em uma pasta; categorias não IPTV mantêm seu nome real.
+ private static String folderFor(String name,String category,String group){
+  if(isChannel(category,group,name))return "TV • "+channelBrand(name,group);
+  String cat=category==null?"":category.trim();
+  if(cat.isEmpty())return "Sem categoria";
+  return cat;
+ }
+ public java.util.LinkedHashMap<String,Integer> catalogFolders(){
+  java.util.TreeMap<String,Integer> counts=new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+  try(Cursor c=getReadableDatabase().rawQuery("SELECT nome,categoria,grupo FROM media",null)){
+   while(c.moveToNext()){
+    String folder=folderFor(c.getString(0),c.getString(1),c.getString(2));
+    Integer current=counts.get(folder);counts.put(folder,current==null?1:current+1);
+   }
+  }
+  return new java.util.LinkedHashMap<>(counts);
+ }
+ public ArrayList<JSONObject> catalogFolderFeed(String folder,String query,int offset,int limit){
+  ArrayList<JSONObject> result=new ArrayList<>();int found=0;
+  String q=query==null?"":query.toLowerCase(java.util.Locale.ROOT);
+  try(Cursor c=getReadableDatabase().rawQuery("SELECT id,nome,categoria,capa,url,sinopse,grupo FROM media ORDER BY nome COLLATE NOCASE",null)){
+   while(c.moveToNext()){
+    String name=c.getString(1);
+    if(!folderFor(name,c.getString(2),c.getString(6)).equalsIgnoreCase(folder) ||
+       !name.toLowerCase(java.util.Locale.ROOT).contains(q))continue;
+    if(found++<offset)continue;
+    if(result.size()>=limit)break;
+    JSONObject o=new JSONObject();try{for(int i=0;i<6;i++)o.put(c.getColumnName(i),c.getString(i));result.add(o);}catch(Exception ignored){}
+   }
+  }
+  return result;
+ }
  public ArrayList<JSONObject> channelGroupFeed(String brand,String query,int offset,int limit){
   ArrayList<JSONObject> out=new ArrayList<>();int found=0;
   try(Cursor c=getReadableDatabase().rawQuery("SELECT id,nome,categoria,capa,url,sinopse,grupo FROM media WHERE LOWER(nome) LIKE ? ORDER BY nome COLLATE NOCASE",new String[]{"%"+brand.toLowerCase(java.util.Locale.ROOT)+"%"})){

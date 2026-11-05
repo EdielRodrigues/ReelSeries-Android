@@ -26,7 +26,7 @@ public class MainActivity extends Activity {
  TextView profile=navText("♟",25);header.addView(profile,new LinearLayout.LayoutParams(dp(39),dp(48)));profile.setOnClickListener(v->startActivity(new Intent(this,ProfileActivity.class)));
  TextView admin=navText("⚙",25);header.addView(admin,new LinearLayout.LayoutParams(dp(39),dp(48)));admin.setOnClickListener(v->startActivity(new Intent(this,AdminActivity.class)));
  ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);layout.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));LinearLayout content=new LinearLayout(this);content.setOrientation(1);content.setPadding(dp(15),0,dp(15),dp(14));scroll.addView(content);
- android.widget.FrameLayout hero=new android.widget.FrameLayout(this);hero.setBackgroundColor(0xff24202a);content.addView(hero,new LinearLayout.LayoutParams(-1,dp(405)));
+ android.widget.FrameLayout hero=new android.widget.FrameLayout(this);hero.setBackgroundColor(0xff24202a);content.addView(hero,new LinearLayout.LayoutParams(-1,dp(455)));
  ImageView heroImage=new ImageView(this);heroImage.setScaleType(ImageView.ScaleType.FIT_CENTER);hero.addView(heroImage,new android.widget.FrameLayout.LayoutParams(-1,-1));
  View overlay=new View(this);overlay.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0x150b101b,0x660b101b,0xff0b101b}));hero.addView(overlay,new android.widget.FrameLayout.LayoutParams(-1,-1));
  LinearLayout heroCopy=new LinearLayout(this);heroCopy.setOrientation(1);heroCopy.setPadding(dp(14),dp(10),dp(14),dp(16));android.widget.FrameLayout.LayoutParams hp=new android.widget.FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);hero.addView(heroCopy,hp);
@@ -40,10 +40,7 @@ public class MainActivity extends Activity {
  final float[] touchX={0};hero.setOnTouchListener((v,e)->{if(e.getAction()==android.view.MotionEvent.ACTION_DOWN){touchX[0]=e.getX();return true;}if(e.getAction()==android.view.MotionEvent.ACTION_UP){float delta=e.getX()-touchX[0];if(Math.abs(delta)>dp(45)){showHero((heroIndex+(delta<0?1:-1)+heroItems.size())%Math.max(1,heroItems.size()),heroImage,heroTitle,heroDescription,featured);return true;}return false;}return true;});
  heroTicker=new Runnable(){public void run(){if(!heroActive)return;refreshHeroBatchIfNeeded(heroImage,heroTitle,heroDescription,featured);if(heroItems.size()>1){showHero((heroIndex+1)%heroItems.size(),heroImage,heroTitle,heroDescription,featured);}}};
  heroBatchTicker=new Runnable(){public void run(){if(!heroActive)return;refreshHeroBatchIfNeeded(heroImage,heroTitle,heroDescription,featured);scheduleHeroBatchCheck();}};
- TextView categoryTitle=navText("CATÁLOGO COMPLETO",12);categoryTitle.setTextColor(0xffff455e);categoryTitle.setTypeface(null,1);categoryTitle.setPadding(0,dp(20),0,dp(8));content.addView(categoryTitle);
- LinearLayout chips=new LinearLayout(this);chips.setOrientation(0);HorizontalScrollView chipScroll=new HorizontalScrollView(this);chipScroll.setHorizontalScrollBarEnabled(false);chipScroll.addView(chips);content.addView(chipScroll);
- String[] labels={"Todos","Filmes","Séries","TV / IPTV"};String[] queries={"Todos","Filmes","Séries","TV / IPTV"};for(int k=0;k<labels.length;k++){final String q=queries[k];TextView chip=actionText(labels[k],false);chip.setPadding(dp(16),dp(10),dp(16),dp(10));LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,dp(43));cp.rightMargin=dp(7);chips.addView(chip,cp);chip.setOnClickListener(v->chooseCategory(q));}
- search=new EditText(this);search.setSingleLine(true);search.setHint("Pesquisar filme, série ou episódio");search.setTextColor(fg);search.setHintTextColor(0xff9fa5b3);search.setBackgroundColor(0xff171e2a);search.setPadding(dp(12),0,dp(12),0);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,dp(48));sp.topMargin=dp(14);content.addView(search,sp);
+ search=new EditText(this);search.setSingleLine(true);search.setHint("Pesquisar filme, série ou episódio");search.setTextColor(fg);search.setHintTextColor(0xff9fa5b3);search.setBackgroundColor(0xff171e2a);search.setPadding(dp(12),0,dp(12),0);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,dp(48));sp.topMargin=dp(20);content.addView(search,sp);
  LinearLayout sort=new LinearLayout(this);sort.setGravity(Gravity.CENTER_VERTICAL);sort.setPadding(0,dp(10),0,0);content.addView(sort);TextView heading=navText("Em destaque",23);heading.setTypeface(null,1);sort.addView(heading,new LinearLayout.LayoutParams(0,-2,1));categories=new Spinner(this);sort.addView(categories,new LinearLayout.LayoutParams(dp(155),dp(48)));catNames.add("Todas");categories.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,catNames));
  status=navText("Carregando catálogo...",12);status.setTextColor(0xffaeb6c7);content.addView(status);
  grid=new GridView(this);grid.setNumColumns(3);grid.setVerticalSpacing(dp(12));grid.setHorizontalSpacing(dp(9));grid.setClipToPadding(false);grid.setPadding(0,dp(10),0,dp(12));grid.setNestedScrollingEnabled(true);content.addView(grid,new LinearLayout.LayoutParams(-1,dp(460)));moreButton=actionText("CARREGAR MAIS TÍTULOS  ↓",false);LinearLayout.LayoutParams moreParams=new LinearLayout.LayoutParams(-1,dp(52));moreParams.topMargin=dp(10);content.addView(moreButton,moreParams);moreButton.setOnClickListener(v->loadNextPage());setContentView(layout);
@@ -182,26 +179,26 @@ public class MainActivity extends Activity {
   TextView title=navText("REEL SÉRIES",19);title.setTypeface(null,1);title.setTextColor(0xffff5269);panel.addView(title);
   TextView home=navText("⌂  Início",17);home.setPadding(dp(10),dp(20),0,dp(18));panel.addView(home);home.setOnClickListener(v->{drawer.dismiss();channelGroup="";chooseCategory("Todos");});
   TextView profile=navText("♙  Meu perfil",17);profile.setPadding(dp(10),dp(10),0,dp(20));panel.addView(profile);profile.setOnClickListener(v->{drawer.dismiss();startActivity(new Intent(this,ProfileActivity.class));});
-  TextView groupsTitle=navText("CANAIS POR GRUPO",12);groupsTitle.setTextColor(0xffff5269);groupsTitle.setPadding(dp(10),dp(12),0,dp(10));panel.addView(groupsTitle);
+  TextView groupsTitle=navText("CATÁLOGO POR PASTAS",12);groupsTitle.setTextColor(0xffff5269);groupsTitle.setPadding(dp(10),dp(12),0,dp(10));panel.addView(groupsTitle);
   ScrollView scroll=new ScrollView(this);panel.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
   LinearLayout list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);scroll.addView(list);
-  TextView wait=navText("Carregando canais...",13);list.addView(wait);
+  TextView wait=navText("Carregando pastas do catálogo...",13);list.addView(wait);
   drawer.setContentView(panel);
   android.view.Window win=drawer.getWindow();if(win!=null){win.setBackgroundDrawableResource(android.R.color.transparent);win.setGravity(Gravity.START|Gravity.TOP);win.setLayout(Math.min(dp(310),getResources().getDisplayMetrics().widthPixels*85/100),-1);win.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);android.view.WindowManager.LayoutParams a=win.getAttributes();a.dimAmount=0.45f;win.setAttributes(a);}
   drawer.show();if(win!=null)win.setLayout(Math.min(dp(310),getResources().getDisplayMetrics().widthPixels*85/100),-1);
   pool.execute(()->{
    final java.util.LinkedHashMap<String,Integer> counts;
-   try(LocalCatalog db=new LocalCatalog(this)){counts=db.channelGroups();}
+   try(LocalCatalog db=new LocalCatalog(this)){counts=db.catalogFolders();}
    catch(Exception e){runOnUiThread(()->wait.setText("Não foi possível listar canais"));return;}
    runOnUiThread(()->{
     if(!drawer.isShowing())return;
     list.removeAllViews();
-    if(counts.isEmpty()){TextView empty=navText("Nenhum canal cadastrado",13);list.addView(empty);return;}
+    if(counts.isEmpty()){TextView empty=navText("Nenhum título salvo ainda",13);list.addView(empty);return;}
     for(java.util.Map.Entry<String,Integer> entry:counts.entrySet()){
      final String group=entry.getKey();
      TextView item=navText("▱  "+group+"    ("+entry.getValue()+")",15);
      item.setPadding(dp(10),dp(12),dp(6),dp(12));list.addView(item);
-     item.setOnClickListener(v->{drawer.dismiss();channelGroup=group;mode="TV / IPTV";selected="Todas";if(categories!=null && categories.getSelectedItemPosition()!=0)categories.setSelection(0);if(search!=null)search.setText("");resetFeed();});
+     item.setOnClickListener(v->{drawer.dismiss();channelGroup=group;mode="Todos";selected="Todas";if(categories!=null && categories.getSelectedItemPosition()!=0)categories.setSelection(0);if(search!=null)search.setText("");resetFeed();});
     }
    });
   });
@@ -217,7 +214,7 @@ public class MainActivity extends Activity {
   pool.execute(()->{
    try{
     ArrayList<JSONObject> page=new ArrayList<>();boolean useBundled=bundledPaging;
-    if(!useBundled){try(LocalCatalog db=new LocalCatalog(this)){page=groupFilter.isEmpty()?db.feed(q,m,cat,offset,60):db.channelGroupFeed(groupFilter,q,offset,60);}
+    if(!useBundled){try(LocalCatalog db=new LocalCatalog(this)){page=groupFilter.isEmpty()?db.feed(q,m,cat,offset,60):db.catalogFolderFeed(groupFilter,q,offset,60);}
      if(offset==0 && page.isEmpty() && !all.isEmpty() && groupFilter.isEmpty())useBundled=true;}
     boolean hasMore;
     if(useBundled){
