@@ -40,21 +40,36 @@ public final class FirebaseCatalogSync {
  private static JSONObject item(Cursor c)throws Exception{
   JSONObject o=new JSONObject();for(int i=0;i<c.getColumnCount();i++)o.put(c.getColumnName(i),c.isNull(i)?JSONObject.NULL:c.getString(i));return o;
  }
+ /** Envia somente IDs ausentes no Firebase. Nunca sobrescreve registros existentes. */
  public static int upload(Context ctx,LocalCatalog db,String origin,String token,LocalCatalog.Progress progress)throws Exception{
-  SQLiteDatabase sql=db.getReadableDatabase();int total=0;int offset=0;
-  // SQLite keyset pagination: no full 66k catalog in memory.
-  String last="";while(true){
+  // Consulta apenas as chaves: nao baixa nem modifica os 118 mil registros completos.
+  String keysJson=request(endpoint(ctx,"items",token)+"&shallow=true","GET",null);
+  HashSet<String> existing=new HashSet<>();
+  if(!"null".equals(keysJson.trim())){
+   JSONObject keys=new JSONObject(keysJson);
+   Iterator<String> it=keys.keys();
+   while(it.hasNext())existing.add(it.next());
+  }
+  SQLiteDatabase sql=db.getReadableDatabase();int sent=0;String last="";
+  while(true){
    String query="SELECT id,nome,categoria,capa,url,sinopse,grupo,origem FROM media WHERE id>?"+(origin==null?"":" AND origem=?")+" ORDER BY id LIMIT 100";
    String[] args=origin==null?new String[]{last}:new String[]{last,origin};
-   JSONObject patch=new JSONObject();int count=0;
+   JSONObject patch=new JSONObject();int scanned=0;
    try(Cursor c=sql.rawQuery(query,args)){
-    while(c.moveToNext()){String id=c.getString(0);patch.put(id,item(c));last=id;count++;}
+    while(c.moveToNext()){
+     String id=c.getString(0);last=id;scanned++;
+     if(existing.add(id))patch.put(id,item(c));
+    }
    }
-   if(count==0)break;
-   request(endpoint(ctx,"items",token),"PATCH",patch.toString());total+=count;progress.update(total);
-   if(count<100)break;
+   if(scanned==0)break;
+   if(patch.length()>0){
+    // PATCH atomico por lote. Se falhar, nao marca itens como enviados nesta execucao.
+    request(endpoint(ctx,"items",token),"PATCH",patch.toString());
+    sent+=patch.length();progress.update(sent);
+   }
+   if(scanned<100)break;
   }
-  return total;
+  return sent;
  }
  public static void uploadOne(Context ctx,LocalCatalog db,String id,String token)throws Exception{
   try(Cursor c=db.getReadableDatabase().rawQuery("SELECT id,nome,categoria,capa,url,sinopse,grupo,origem FROM media WHERE id=?",new String[]{id})){
@@ -153,17 +168,7 @@ public final class FirebaseCatalogSync {
    int received=0;SQLiteDatabase sql=db.getWritableDatabase();sql.beginTransaction();
    try{
     for(String key:keys){if(last!=null&&key.equals(last))continue;JSONObject o=items.optJSONObject(key);if(o==null)continue;
-     String id=o.optString("id",key);
-     // Aceita os campos de reprodução usados por diferentes versões do catálogo.
-     String stream=LocalCatalog.first(o,"url","video","link","stream","stream_url","video_url","play_url","source","src");
-     if(!stream.startsWith("http://")&&!stream.startsWith("https://"))stream="";
-     // Uma sincronização com URL vazia não deve apagar um link válido já salvo.
-     if(stream.isEmpty()){
-      try(Cursor previous=sql.rawQuery("SELECT url FROM media WHERE id=?",new String[]{id})){
-       if(previous.moveToFirst()){String saved=previous.getString(0);if(saved!=null&&saved.startsWith("http"))stream=saved;}
-      }
-     }
-     db.save(sql,id,LocalCatalog.first(o,"nome","titulo","title","name"),LocalCatalog.first(o,"categoria","category","tipo"),LocalCatalog.first(o,"capa","poster","imagem","image"),stream,LocalCatalog.first(o,"sinopse","descricao","description"),LocalCatalog.first(o,"grupo","group"),o.optString("origem","Firebase"));count++;received++;
+     String id=o.optString("id",key);db.save(sql,id,o.optString("nome"),o.optString("categoria"),o.optString("capa"),o.optString("url"),o.optString("sinopse"),o.optString("grupo"),o.optString("origem","Firebase"));count++;received++;
     }
     sql.setTransactionSuccessful();
    }finally{sql.endTransaction();}
