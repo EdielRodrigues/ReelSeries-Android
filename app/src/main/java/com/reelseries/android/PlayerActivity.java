@@ -165,13 +165,13 @@ public class PlayerActivity extends Activity {
          // Ícone Cast dentro de uma área de 28x28, sem desenhar fora da View.
      // Símbolo Cast inteiro, centralizado em uma área 28x28 dp.
      float density=getResources().getDisplayMetrics().density;
-     float size=Math.min(28f*density,Math.min(getWidth(),getHeight())-8f*density);
+     float size=Math.min(25f*density,Math.min(getWidth(),getHeight())-12f*density);
      if(size<=0)return;
      canvas.save();
      canvas.translate((getWidth()-size)/2f,(getHeight()-size)/2f);
      canvas.scale(size/28f,size/28f);
      paint.setColor(casting?0xff48dca5:0xffffffff);
-     paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(2.2f);
+     paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(2.9f);
      paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);
      // Tela do Cast: borda superior, direita e início da lateral esquerda.
      android.graphics.Path screen=new android.graphics.Path();
@@ -180,14 +180,14 @@ public class PlayerActivity extends Activity {
      canvas.drawPath(screen,paint);
      canvas.drawArc(3,13,17,27,270,90,false,paint);
      canvas.drawArc(3,19,11,27,270,90,false,paint);
-     paint.setStyle(Paint.Style.FILL);canvas.drawCircle(3.5f,24.5f,2.1f,paint);
+     paint.setStyle(Paint.Style.FILL);canvas.drawCircle(3.5f,24.5f,2.7f,paint);
      canvas.restore();
    }
   };
   castIcon=castButton;
   castButton.setContentDescription("Transmitir para TV (Google Cast)");
   castButton.setClickable(true);
-  FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams((int)(58*getResources().getDisplayMetrics().density),(int)(58*getResources().getDisplayMetrics().density),Gravity.TOP|Gravity.END);
+  FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams((int)(48*getResources().getDisplayMetrics().density),(int)(48*getResources().getDisplayMetrics().density),Gravity.TOP|Gravity.END);
   cp.setMargins(0,(int)(8*getResources().getDisplayMetrics().density),(int)(14*getResources().getDisplayMetrics().density),0);
   root.addView(castButton,cp);
   castStateLabel=new TextView(this);
@@ -216,14 +216,12 @@ public class PlayerActivity extends Activity {
  if(b!=null){savedPosition=b.getLong("position",0);playWhenReady=b.getBoolean("playing",true);restored=true;playlistIndex=b.getInt("playlistIndex",playlistIndex);url=b.getString("url",url);}
  }
  private void showTransmissionOptions(){
-  final String[] options={"Google Cast / Chromecast","Smart TV compatível (Google Cast)","DLNA / UPnP (aplicativo externo)","Cast do WebView (se o site oferecer)","Espelhamento Smart View / Android","Player externo"};
+  final String[] options={"Google Cast / Chromecast","Smart TV compatível (Google Cast)","Espelhamento Smart View / Android","Player externo"};
   new AlertDialog.Builder(this).setTitle("Transmitir para televisão").setItems(options,(d,which)->{
    switch(which){
     case 0:case 1:showCastDevices();break;
-    case 2:openExternalPlayer(true);break;
-    case 3:new AlertDialog.Builder(this).setTitle("WebView Cast").setMessage("O botão de Cast do WebView depende do próprio site oferecer transmissão. Não é um protocolo universal e não transmite qualquer URL.").setPositiveButton("OK",null).show();break;
-    case 4:new AlertDialog.Builder(this).setTitle("Espelhamento de tela").setMessage("No Samsung, abra o painel rápido e selecione Smart View. Ou tente as configurações de transmissão do Android.").setNegativeButton("Cancelar",null).setPositiveButton("Abrir configurações",(dd,w)->{try{startActivity(new Intent("android.settings.CAST_SETTINGS"));}catch(Exception e){startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS));}}).show();break;
-    case 5:openExternalPlayer(false);break;
+    case 2:new AlertDialog.Builder(this).setTitle("Espelhamento de tela").setMessage("No Samsung, abra o painel rápido e selecione Smart View. Ou tente as configurações de transmissão do Android.").setNegativeButton("Cancelar",null).setPositiveButton("Abrir configurações",(dd,w)->{try{startActivity(new Intent("android.settings.CAST_SETTINGS"));}catch(Exception e){startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS));}}).show();break;
+    case 3:openExternalPlayer(false);break;
    }
   }).setNegativeButton("Cancelar",null).show();
  }

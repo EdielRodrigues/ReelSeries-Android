@@ -28,6 +28,46 @@ public class LocalCatalog extends SQLiteOpenHelper {
  public void save(SQLiteDatabase db,String id,String name,String category,String cover,String url,String synopsis,String group,String origin){android.content.ContentValues v=new android.content.ContentValues();v.put("id",id);v.put("nome",name);v.put("categoria",category);v.put("capa",cover);v.put("url",url);v.put("sinopse",synopsis);v.put("grupo",group);v.put("origem",origin);db.insertWithOnConflict("media",null,v,SQLiteDatabase.CONFLICT_REPLACE);}
  public void addStream(String name,String url){save(getWritableDatabase(),"stream_"+hash(url),name,"IPTV ao vivo","",url,"","","M3U8");}
  public ArrayList<JSONObject> search(String q,String cat,int limit){ArrayList<JSONObject> list=new ArrayList<>();String sql="SELECT id,nome,categoria,capa,url,sinopse FROM media WHERE nome LIKE ?"+(cat.equals("Todas")?"":" AND categoria=?")+" ORDER BY nome LIMIT "+Math.max(1,Math.min(300,limit));String[] args=cat.equals("Todas")?new String[]{"%"+q+"%"}:new String[]{"%"+q+"%",cat};try(Cursor c=getReadableDatabase().rawQuery(sql,args)){while(c.moveToNext()){JSONObject o=new JSONObject();try{for(int i=0;i<6;i++)o.put(c.getColumnName(i),c.getString(i));list.add(o);}catch(Exception ignored){}}}return list;}
+ private static boolean isChannel(String cat,String group,String name){
+  String c=cat==null?"":cat.toLowerCase(java.util.Locale.ROOT);
+  String g=group==null?"":group.toLowerCase(java.util.Locale.ROOT);
+  String n=name==null?"":name.toLowerCase(java.util.Locale.ROOT);
+  return c.contains("iptv")||c.contains("canal")||c.contains("tv ao vivo")||c.equals("tv")||c.contains("televis")||g.contains("iptv")||n.matches(".*\\b(fhd|hd|sd)\\b.*")&&(c.contains("tv")||c.contains("live"));
+ }
+ private static String channelBrand(String name,String group){
+  String n=name==null?"":name.trim();
+  String lower=n.toLowerCase(java.util.Locale.ROOT);
+  String[] brands={"Globo","SBT","Record","Band","TNT","SporTV","Premiere","Telecine","HBO","ESPN","Discovery","Cartoon Network","Nickelodeon","Universal","Warner","CNN","Fox","Multishow","GNT","AXN","Sony","Paramount","Disney","History","Animal Planet","National Geographic","RedeTV","TV Cultura"};
+  for(String b:brands)if(lower.contains(b.toLowerCase(java.util.Locale.ROOT)))return b;
+  String source=n.isEmpty()?(group==null?"":group.trim()):n;
+  source=source.replaceFirst("(?i)^(br|brasil|tv|canal)\\s*[-:|]\\s*","").trim();
+  String[] parts=source.split("[\\s|:–-]+",2);
+  return parts.length==0||parts[0].isEmpty()?"Outros":parts[0];
+ }
+ public java.util.LinkedHashMap<String,Integer> channelGroups(){
+  java.util.TreeMap<String,Integer> counts=new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+  try(Cursor c=getReadableDatabase().rawQuery("SELECT nome,categoria,grupo FROM media",null)){
+   while(c.moveToNext()){
+    String name=c.getString(0),cat=c.getString(1),group=c.getString(2);
+    if(!isChannel(cat,group,name))continue;
+    String brand=channelBrand(name,group);counts.put(brand,counts.containsKey(brand)?counts.get(brand)+1:1);
+   }
+  }
+  java.util.LinkedHashMap<String,Integer> result=new java.util.LinkedHashMap<>();result.putAll(counts);return result;
+ }
+ public ArrayList<JSONObject> channelGroupFeed(String brand,String query,int offset,int limit){
+  ArrayList<JSONObject> out=new ArrayList<>();int found=0;
+  try(Cursor c=getReadableDatabase().rawQuery("SELECT id,nome,categoria,capa,url,sinopse,grupo FROM media WHERE LOWER(nome) LIKE ? ORDER BY nome COLLATE NOCASE",new String[]{"%"+brand.toLowerCase(java.util.Locale.ROOT)+"%"})){
+   while(c.moveToNext()){
+    String name=c.getString(1);
+    if(!isChannel(c.getString(2),c.getString(6),name)||!channelBrand(name,c.getString(6)).equalsIgnoreCase(brand)||!name.toLowerCase(java.util.Locale.ROOT).contains(query.toLowerCase(java.util.Locale.ROOT)))continue;
+    if(found++<offset)continue;
+    if(out.size()>=limit)break;
+    JSONObject o=new JSONObject();try{for(int i=0;i<6;i++)o.put(c.getColumnName(i),c.getString(i));out.add(o);}catch(Exception ignored){}
+   }
+  }
+  return out;
+ }
  public ArrayList<JSONObject> feed(String query,String mode,String category,int offset,int limit){
   ArrayList<JSONObject> result=new ArrayList<>();String c="LOWER(COALESCE(categoria,''))", n="LOWER(COALESCE(nome,''))";
   String tv="("+c+" LIKE '%iptv%' OR "+c+" LIKE '%canal%' OR "+c+" LIKE '%tv ao vivo%' OR "+c+"='tv' OR "+c+" LIKE '%televis%')";

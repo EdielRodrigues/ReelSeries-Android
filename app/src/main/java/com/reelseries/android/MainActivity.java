@@ -5,7 +5,7 @@ import android.app.*;import android.os.*;import android.content.*;import android
 public class MainActivity extends Activity {
  final ArrayList<JSONObject> all=new ArrayList<>(), shown=new ArrayList<>(); final java.util.HashMap<String,JSONObject> cloud=new java.util.HashMap<>();
  final ExecutorService pool=Executors.newFixedThreadPool(3); final android.util.LruCache<String,Bitmap> cache=new android.util.LruCache<String,Bitmap>(16);
- GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos"; int pageOffset=0; boolean loadingPage=false, endReached=false, bundledPaging=false; TextView moreButton; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
+ GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos", channelGroup=""; int pageOffset=0; boolean loadingPage=false, endReached=false, bundledPaging=false; TextView moreButton; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
  final ArrayList<JSONObject> heroItems=new ArrayList<>(); int heroIndex=0; boolean heroActive=false;
  Runnable heroTicker; android.widget.LinearLayout heroDots;
  // Ten different highlights every 30 minutes; six-second slide interval.
@@ -19,12 +19,12 @@ public class MainActivity extends Activity {
  int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
  @Override public void onCreate(Bundle b){super.onCreate(b);checkApkUpdate();getWindow().setStatusBarColor(bg);getWindow().setNavigationBarColor(Color.BLACK);
  LinearLayout layout=new LinearLayout(this);layout.setOrientation(1);layout.setBackgroundColor(bg);
- LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setPadding(dp(16),dp(10),dp(16),dp(10));layout.addView(header);
- TextView menu=navText("☰",25);header.addView(menu,new LinearLayout.LayoutParams(dp(44),dp(48)));menu.setOnClickListener(v->new AlertDialog.Builder(this).setItems(new String[]{"Início","Filmes","Séries","Canais IPTV","Meu perfil","Administração"},(d,w)->{if(w==4)startActivity(new Intent(this,ProfileActivity.class));else if(w==5)startActivity(new Intent(this,AdminActivity.class));else chooseCategory(w==0?"Todos":w==1?"Filmes":w==2?"Séries":"TV / IPTV");}).show());
- TextView brand=navText("▣  REEL\n     SÉRIES",18);brand.setTextColor(0xfff04458);brand.setTypeface(null,1);header.addView(brand,new LinearLayout.LayoutParams(0,dp(58),1));
- TextView searchIcon=navText("⌕",30);header.addView(searchIcon,new LinearLayout.LayoutParams(dp(44),dp(48)));searchIcon.setOnClickListener(v->{search.requestFocus();((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(search,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});
- TextView profile=navText("♟",25);header.addView(profile,new LinearLayout.LayoutParams(dp(44),dp(48)));profile.setOnClickListener(v->startActivity(new Intent(this,ProfileActivity.class)));
- TextView admin=navText("⚙",25);header.addView(admin,new LinearLayout.LayoutParams(dp(44),dp(48)));admin.setOnClickListener(v->startActivity(new Intent(this,AdminActivity.class)));
+ LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setPadding(dp(10),dp(8),dp(10),dp(8));layout.addView(header);
+ TextView menu=navText("☰",25);header.addView(menu,new LinearLayout.LayoutParams(dp(39),dp(48)));menu.setOnClickListener(v->showChannelSidebar());
+ TextView brand=navText("▣ REEL SÉRIES",17);brand.setSingleLine(true);brand.setEllipsize(android.text.TextUtils.TruncateAt.END);brand.setGravity(Gravity.CENTER_VERTICAL);brand.setTextColor(0xfff04458);brand.setTypeface(null,1);header.addView(brand,new LinearLayout.LayoutParams(0,dp(48),1));
+ TextView searchIcon=navText("⌕",30);header.addView(searchIcon,new LinearLayout.LayoutParams(dp(39),dp(48)));searchIcon.setOnClickListener(v->{search.requestFocus();((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(search,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});
+ TextView profile=navText("♟",25);header.addView(profile,new LinearLayout.LayoutParams(dp(39),dp(48)));profile.setOnClickListener(v->startActivity(new Intent(this,ProfileActivity.class)));
+ TextView admin=navText("⚙",25);header.addView(admin,new LinearLayout.LayoutParams(dp(39),dp(48)));admin.setOnClickListener(v->startActivity(new Intent(this,AdminActivity.class)));
  ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);layout.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));LinearLayout content=new LinearLayout(this);content.setOrientation(1);content.setPadding(dp(15),0,dp(15),dp(14));scroll.addView(content);
  android.widget.FrameLayout hero=new android.widget.FrameLayout(this);hero.setBackgroundColor(0xff24202a);content.addView(hero,new LinearLayout.LayoutParams(-1,dp(405)));
  ImageView heroImage=new ImageView(this);heroImage.setScaleType(ImageView.ScaleType.FIT_CENTER);hero.addView(heroImage,new android.widget.FrameLayout.LayoutParams(-1,-1));
@@ -135,7 +135,7 @@ public class MainActivity extends Activity {
  }
  TextView navText(String value,int size){TextView v=new TextView(this);v.setText(value);v.setTextColor(Color.WHITE);v.setTextSize(size);v.setGravity(Gravity.CENTER_VERTICAL);return v;}
  TextView actionText(String value,boolean primary){TextView v=navText(value,14);v.setGravity(Gravity.CENTER);v.setTypeface(null,1);v.setTextColor(primary?0xff11151d:Color.WHITE);android.graphics.drawable.GradientDrawable bg=new android.graphics.drawable.GradientDrawable();bg.setColor(primary?Color.WHITE:0xff30333c);bg.setCornerRadius(dp(12));v.setBackground(bg);return v;}
- void chooseCategory(String q){mode=q;selected="Todas";if(categories!=null&&categories.getSelectedItemPosition()!=0)categories.setSelection(0);resetFeed();}
+ void chooseCategory(String q){channelGroup="";mode=q;selected="Todas";if(categories!=null&&categories.getSelectedItemPosition()!=0)categories.setSelection(0);resetFeed();}
  // Persistent SQLite cache: check at most once per 24h, never redownload on every open.
  final java.util.concurrent.atomic.AtomicBoolean cloudBusy=new java.util.concurrent.atomic.AtomicBoolean(false);
  static final long CLOUD_INTERVAL_MS=24L*60*60*1000;
@@ -175,19 +175,50 @@ public class MainActivity extends Activity {
   });
  }
 
+ // Painel lateral: início, perfil e grupos reais do catálogo IPTV local.
+ private void showChannelSidebar(){
+  final android.app.Dialog drawer=new android.app.Dialog(this);
+  LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);panel.setBackgroundColor(0xff171e2a);panel.setPadding(dp(16),dp(16),dp(12),dp(12));
+  TextView title=navText("REEL SÉRIES",19);title.setTypeface(null,1);title.setTextColor(0xffff5269);panel.addView(title);
+  TextView home=navText("⌂  Início",17);home.setPadding(dp(10),dp(20),0,dp(18));panel.addView(home);home.setOnClickListener(v->{drawer.dismiss();channelGroup="";chooseCategory("Todos");});
+  TextView profile=navText("♙  Meu perfil",17);profile.setPadding(dp(10),dp(10),0,dp(20));panel.addView(profile);profile.setOnClickListener(v->{drawer.dismiss();startActivity(new Intent(this,ProfileActivity.class));});
+  TextView groupsTitle=navText("CANAIS POR GRUPO",12);groupsTitle.setTextColor(0xffff5269);groupsTitle.setPadding(dp(10),dp(12),0,dp(10));panel.addView(groupsTitle);
+  ScrollView scroll=new ScrollView(this);panel.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+  LinearLayout list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);scroll.addView(list);
+  TextView wait=navText("Carregando canais...",13);list.addView(wait);
+  drawer.setContentView(panel);
+  android.view.Window win=drawer.getWindow();if(win!=null){win.setBackgroundDrawableResource(android.R.color.transparent);win.setGravity(Gravity.START|Gravity.TOP);win.setLayout(Math.min(dp(310),getResources().getDisplayMetrics().widthPixels*85/100),-1);win.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);android.view.WindowManager.LayoutParams a=win.getAttributes();a.dimAmount=0.45f;win.setAttributes(a);}
+  drawer.show();if(win!=null)win.setLayout(Math.min(dp(310),getResources().getDisplayMetrics().widthPixels*85/100),-1);
+  pool.execute(()->{
+   final java.util.LinkedHashMap<String,Integer> counts;
+   try(LocalCatalog db=new LocalCatalog(this)){counts=db.channelGroups();}
+   catch(Exception e){runOnUiThread(()->wait.setText("Não foi possível listar canais"));return;}
+   runOnUiThread(()->{
+    if(!drawer.isShowing())return;
+    list.removeAllViews();
+    if(counts.isEmpty()){TextView empty=navText("Nenhum canal cadastrado",13);list.addView(empty);return;}
+    for(java.util.Map.Entry<String,Integer> entry:counts.entrySet()){
+     final String group=entry.getKey();
+     TextView item=navText("▱  "+group+"    ("+entry.getValue()+")",15);
+     item.setPadding(dp(10),dp(12),dp(6),dp(12));list.addView(item);
+     item.setOnClickListener(v->{drawer.dismiss();channelGroup=group;mode="TV / IPTV";selected="Todas";if(categories!=null && categories.getSelectedItemPosition()!=0)categories.setSelection(0);if(search!=null)search.setText("");resetFeed();});
+    }
+   });
+  });
+ }
  void resetFeed(){if(search==null||grid==null||adapter==null)return;requestVersion++;pageOffset=0;endReached=false;loadingPage=false;bundledPaging=false;localPages.clear();shown.clear();adapter.notifyDataSetChanged();updateGridHeight();loadNextPage();}
  boolean matches(JSONObject o,String query){String name=o.optString("nome","");String cat=o.optString("categoria","");String c=cat.toLowerCase(java.util.Locale.ROOT);String n=name.toLowerCase(java.util.Locale.ROOT);if(!n.contains(query))return false;if(!selected.equals("Todas")&&!selected.equals(cat))return false;boolean tv=c.contains("iptv")||c.contains("canal")||c.contains("tv ao vivo")||c.equals("tv")||c.contains("televis");boolean series=SeriesHelper.isSeries(o);if(mode.equals("TV / IPTV"))return tv;if(mode.equals("Séries"))return series&&!tv;if(mode.equals("Filmes"))return !tv&&!series&&(c.contains("filme")||c.contains("movie")||c.contains("cinema"));return true;}
  void loadNextPage(){
   if(loadingPage||endReached||pool.isShutdown())return;
-  if(mode.equals("Séries") && !all.isEmpty()){loadSeriesPage();return;}
+  if(mode.equals("Séries") && !all.isEmpty() && channelGroup.isEmpty()){loadSeriesPage();return;}
   loadingPage=true;final int version=requestVersion,offset=pageOffset;
-  final String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim(),m=mode,cat=selected;
+  final String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim(),m=mode,cat=selected,groupFilter=channelGroup;
   moreButton.setVisibility(View.VISIBLE);moreButton.setText("CARREGANDO TÍTULOS...");
   pool.execute(()->{
    try{
     ArrayList<JSONObject> page=new ArrayList<>();boolean useBundled=bundledPaging;
-    if(!useBundled){try(LocalCatalog db=new LocalCatalog(this)){page=db.feed(q,m,cat,offset,60);}
-     if(offset==0 && page.isEmpty() && !all.isEmpty())useBundled=true;}
+    if(!useBundled){try(LocalCatalog db=new LocalCatalog(this)){page=groupFilter.isEmpty()?db.feed(q,m,cat,offset,60):db.channelGroupFeed(groupFilter,q,offset,60);}
+     if(offset==0 && page.isEmpty() && !all.isEmpty() && groupFilter.isEmpty())useBundled=true;}
     boolean hasMore;
     if(useBundled){
      page.clear();int found=0;
