@@ -216,6 +216,7 @@ public class AdminActivity extends Activity {
     }catch(Exception e){msg("Não conectada: "+xtreamSafeError(e));}finally{busy=false;}});
    }catch(Exception e){msg("Conexão inválida: "+e.getMessage());}
   });
+  button("☷  VISUALIZAR CATÁLOGO ENVIADO",()->xtreamSentCatalog(0,""));
   section("Sincronizar catálogo");
   button("▣  SÉRIES + TEMPORADAS + EPISÓDIOS",()->xtreamStart("series"));
   button("▤  FILMES",()->xtreamStart("movie"));
@@ -228,6 +229,40 @@ public class AdminActivity extends Activity {
   automatic.setOnCheckedChangeListener((v,checked)->getSharedPreferences("xtream_admin",MODE_PRIVATE).edit().putBoolean("auto",checked).apply());
   root.addView(automatic);
   button("←  Voltar ao ADM",this::dashboard);
+ }
+ private void xtreamSentCatalog(int offset,String filter){
+  if(!authorized){login();return;}
+  String host=xtreamPref("host"),user=xtreamPref("user");
+  screen("Catálogo Xtream enviado");
+  if(host.isEmpty()||user.isEmpty()){msg("Salve uma conexão Xtream primeiro.");button("Voltar",this::xtreamPanel);return;}
+  String origin="xtream_"+LocalCatalog.hash(host+"|"+user);
+  long last=getSharedPreferences("xtream_admin",MODE_PRIVATE).getLong("last_upload_success",0);
+  if(last==0)msg("Ainda não há envio ao Firebase confirmado neste aparelho. A lista abaixo mostra os registros locais, não comprova a publicação.");
+  else msg("Último envio concluído: "+android.text.format.DateFormat.format("dd/MM/yyyy HH:mm",last)+". Itens abaixo pertencem à conexão selecionada; não são uma auditoria individual do servidor.");
+  EditText search=field("Pesquisar série, temporada, episódio, filme ou canal");search.setSingleLine(true);search.setText(filter);
+  button("Pesquisar",()->xtreamSentCatalog(0,search.getText().toString().trim()));
+  worker.execute(()->{
+   java.util.ArrayList<org.json.JSONObject> results=new java.util.ArrayList<>();int total=0,series=0,episodes=0,movies=0,live=0;
+   String pattern="%"+filter+"%";
+   try(android.database.Cursor c=catalog.getReadableDatabase().rawQuery("SELECT nome,categoria,url,id FROM media WHERE origem=? AND nome LIKE ? ORDER BY nome COLLATE NOCASE LIMIT 100 OFFSET ?",new String[]{origin,pattern,String.valueOf(offset)})){
+    while(c.moveToNext()){org.json.JSONObject o=new org.json.JSONObject();o.put("nome",c.getString(0));o.put("categoria",c.getString(1));o.put("url",c.getString(2));o.put("id",c.getString(3));results.add(o);}
+   }catch(Exception e){msg("Falha ao consultar catálogo: "+e.getMessage());}
+   try(android.database.Cursor c=catalog.getReadableDatabase().rawQuery("SELECT COUNT(*) FROM media WHERE origem=? AND nome LIKE ?",new String[]{origin,pattern})){if(c.moveToFirst())total=c.getInt(0);}
+   catch(Exception ignored){}
+   final int count=total;
+   runOnUiThread(()->{
+    if(isFinishing())return;
+    msg("Registros encontrados: "+count+" • Exibindo "+(results.isEmpty()?0:offset+1)+"–"+(offset+results.size()));
+    for(org.json.JSONObject o:results){
+     String name=o.optString("nome"),cat=o.optString("categoria"),url=o.optString("url");
+     String kind=url.contains("/series/")?"EPISÓDIO":url.contains("/movie/")?"FILME":url.contains("/live/")?"TV AO VIVO":"SÉRIE";
+     button(kind+" • "+name,()->new AlertDialog.Builder(this).setTitle(name).setMessage("Tipo: "+kind+"\nCategoria: "+cat+"\nID local: "+o.optString("id")+"\n"+(url.isEmpty()?"Sem vídeo vinculado":"Vídeo vinculado ao registro")).setPositiveButton("OK",null).show());
+    }
+    if(offset>0)button("← Página anterior",()->xtreamSentCatalog(Math.max(0,offset-100),filter));
+    if(offset+results.size()<count)button("Próximos 100 →",()->xtreamSentCatalog(offset+100,filter));
+    button("← Voltar às conexões",this::xtreamPanel);
+   });
+  });
  }
  private String xtreamBase(String raw)throws Exception{
   URL u=new URL(raw.trim());String scheme=u.getProtocol();
@@ -265,7 +300,7 @@ public class AdminActivity extends Activity {
     final int count=total;
     if(count>0){msg("Importados "+count+" registros. Enviando ao Firebase...");
      final java.util.concurrent.CountDownLatch latch=new java.util.concurrent.CountDownLatch(1);
-     FirebaseCatalogSync.withToken(auth,token->new Thread(()->{try{int n=FirebaseCatalogSync.upload(this,catalog,origin,token,c->msg("Firebase: "+c+" enviados"));FirebaseCatalogSync.markChanged(this,token);msg("Firebase sincronizado: "+n+" registros.");}catch(Exception e){msg("Falha Firebase: "+e.getMessage());}finally{latch.countDown();}},"xtream-upload").start(),e->{msg("Falha Firebase: "+e);latch.countDown();});
+     FirebaseCatalogSync.withToken(auth,token->new Thread(()->{try{int n=FirebaseCatalogSync.upload(this,catalog,origin,token,c->msg("Firebase: "+c+" enviados"));FirebaseCatalogSync.markChanged(this,token);getSharedPreferences("xtream_admin",MODE_PRIVATE).edit().putLong("last_upload_success",System.currentTimeMillis()).apply();msg("Firebase sincronizado: "+n+" registros.");}catch(Exception e){msg("Falha Firebase: "+e.getMessage());}finally{latch.countDown();}},"xtream-upload").start(),e->{msg("Falha Firebase: "+e);latch.countDown();});
      latch.await();
     }
     if(errors.isEmpty())msg("Importação concluída: "+count+" registros processados. Confira o resultado da sincronização no Firebase.");
