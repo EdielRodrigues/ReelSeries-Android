@@ -44,7 +44,7 @@ public final class FirebaseCatalogSync {
  public static int upload(Context ctx,LocalCatalog db,String origin,String token,LocalCatalog.Progress progress)throws Exception{
   SQLiteDatabase sql=db.getReadableDatabase();int sent=0;String last="";
   while(true){
-   String query="SELECT id,nome,categoria,capa,url,sinopse,grupo,origem FROM media WHERE id>?"+(origin==null?"":" AND origem=?")+" ORDER BY id LIMIT 50";
+   String query="SELECT id,nome,categoria,capa,url,sinopse,grupo,origem,series_id,episode_id,parent_series_id,season_number,episode_number FROM media WHERE id>?"+(origin==null?"":" AND origem=?")+" ORDER BY id LIMIT 50";
    String[] args=origin==null?new String[]{last}:new String[]{last,origin};
    JSONObject patch=new JSONObject();int scanned=0;
    try(Cursor c=sql.rawQuery(query,args)){
@@ -61,7 +61,7 @@ public final class FirebaseCatalogSync {
   return sent;
  }
  public static void uploadOne(Context ctx,LocalCatalog db,String id,String token)throws Exception{
-  try(Cursor c=db.getReadableDatabase().rawQuery("SELECT id,nome,categoria,capa,url,sinopse,grupo,origem FROM media WHERE id=?",new String[]{id})){
+  try(Cursor c=db.getReadableDatabase().rawQuery("SELECT id,nome,categoria,capa,url,sinopse,grupo,origem,series_id,episode_id,parent_series_id,season_number,episode_number FROM media WHERE id=?",new String[]{id})){
    if(!c.moveToFirst())throw new IOException("Título não encontrado no banco local");
    request(endpoint(ctx,"items/"+URLEncoder.encode(id,"UTF-8"),token),"PUT",item(c).toString());
   }
@@ -163,7 +163,7 @@ public final class FirebaseCatalogSync {
        if(old.moveToFirst()&&!old.isNull(0))incomingUrl=old.getString(0);
       }
      }
-     db.save(sql,id,o.optString("nome"),o.optString("categoria"),o.optString("capa"),incomingUrl,o.optString("sinopse"),o.optString("grupo"),o.optString("origem","Firebase"));count++;received++;
+     db.saveXtream(sql,id,o.optString("nome"),o.optString("categoria"),o.optString("capa"),incomingUrl,o.optString("sinopse"),o.optString("grupo"),o.optString("origem","Firebase"),o.optString("series_id"),o.optString("episode_id"),o.optString("parent_series_id"),o.optInt("season_number"),o.optInt("episode_number"));count++;received++;
     }
     sql.setTransactionSuccessful();
    }finally{sql.endTransaction();}

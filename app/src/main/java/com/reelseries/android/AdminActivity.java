@@ -371,7 +371,7 @@ public class AdminActivity extends Activity {
     // Series require get_series_info and episode selection; do not invent a playable URL.
     String cat=categories.get(category);if(cat==null||cat.isEmpty())cat=type.equals("live")?"TV / IPTV":type.equals("movie")?"Filmes":"Séries";
     String key="xtream_"+LocalCatalog.hash(base+"|"+user+"|"+type+"|"+id);
-    catalog.save(db,key,name,cat,cover,url,description,cat,origin);count++;
+    if(type.equals("series"))catalog.saveXtream(db,key,name,cat,cover,url,description,cat,origin,id,"","",0,0);else catalog.save(db,key,name,cat,cover,url,description,cat,origin);count++;
     if(type.equals("series"))pendingSeries.add(new String[]{id,name,cat,cover,description,key});
     if(count%150==0){db.setTransactionSuccessful();db.endTransaction();transaction=false;msg("Xtream "+type+": "+count+" registros...");db.beginTransaction();transaction=true;}
    }
@@ -424,7 +424,7 @@ public class AdminActivity extends Activity {
      String name=series[1]+" S"+seasonNum+"E"+episodeNum;
      String episodeTitle=ep.optString("title","").trim();if(!episodeTitle.isEmpty())name+=" - "+episodeTitle;
      String key="xtream_"+LocalCatalog.hash(base+"|"+user+"|episode|"+series[0]+"|"+episodeId);
-     catalog.save(db,key,name,series[2],series[3],url,series[4],"xtream_parent:"+series[5],origin);saved++;
+     catalog.saveXtream(db,key,name,series[2],series[3],url,series[4],"xtream_parent:"+series[5],origin,series[0],episodeId,series[5],Integer.parseInt(seasonNum),Integer.parseInt(episodeNum));saved++;
     }
    }
    db.setTransactionSuccessful();
