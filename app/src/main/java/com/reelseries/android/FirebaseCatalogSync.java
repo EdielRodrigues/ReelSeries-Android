@@ -40,54 +40,23 @@ public final class FirebaseCatalogSync {
  private static JSONObject item(Cursor c)throws Exception{
   JSONObject o=new JSONObject();for(int i=0;i<c.getColumnCount();i++)o.put(c.getColumnName(i),c.isNull(i)?JSONObject.NULL:c.getString(i));return o;
  }
- /** Envia novos IDs e preenche URLs vazias somente quando o banco local tem URL. */
+ /** Envia os registros locais em lotes, atualizando também registros existentes. */
  public static int upload(Context ctx,LocalCatalog db,String origin,String token,LocalCatalog.Progress progress)throws Exception{
-  // Consulta apenas as chaves: nao baixa nem modifica os 118 mil registros completos.
-  String keysJson=request(endpoint(ctx,"items",token)+"&shallow=true","GET",null);
-  HashSet<String> existing=new HashSet<>();
-  if(!"null".equals(keysJson.trim())){
-   JSONObject keys=new JSONObject(keysJson);
-   Iterator<String> it=keys.keys();
-   while(it.hasNext())existing.add(it.next());
-  }
   SQLiteDatabase sql=db.getReadableDatabase();int sent=0;String last="";
   while(true){
-   String query="SELECT id,nome,categoria,capa,url,sinopse,grupo,origem FROM media WHERE id>?"+(origin==null?"":" AND origem=?")+" ORDER BY id LIMIT 100";
+   String query="SELECT id,nome,categoria,capa,url,sinopse,grupo,origem FROM media WHERE id>?"+(origin==null?"":" AND origem=?")+" ORDER BY id LIMIT 50";
    String[] args=origin==null?new String[]{last}:new String[]{last,origin};
    JSONObject patch=new JSONObject();int scanned=0;
    try(Cursor c=sql.rawQuery(query,args)){
     while(c.moveToNext()){
      String id=c.getString(0);last=id;scanned++;
-     if(existing.add(id)){
-      patch.put(id,item(c));
-     }else{
-      // Corrige somente links ausentes no Firebase; nunca substitui um link valido.
-      String localUrl=c.getString(4);
-      if(localUrl!=null&&!localUrl.trim().isEmpty()){
-       String remote=request(endpoint(ctx,"items/"+URLEncoder.encode(id,"UTF-8"),token),"GET",null);
-       if(remote.equals("null")){
-        patch.put(id,item(c));
-       }else{
-        JSONObject current=new JSONObject(remote);
-        String remoteUrl=current.optString("url","").trim();
-        if(remoteUrl.isEmpty()||remoteUrl.equalsIgnoreCase("null")){
-         // PATCH somente no campo url para preservar os outros dados do registro.
-         JSONObject urlOnly=new JSONObject();urlOnly.put("url",localUrl);
-         request(endpoint(ctx,"items/"+URLEncoder.encode(id,"UTF-8"),token),"PATCH",urlOnly.toString());
-         sent++;progress.update(sent);
-        }
-       }
-      }
-     }
+     patch.put(id,item(c));
     }
    }
    if(scanned==0)break;
-   if(patch.length()>0){
-    // PATCH atomico por lote. Se falhar, nao marca itens como enviados nesta execucao.
-    request(endpoint(ctx,"items",token),"PATCH",patch.toString());
-    sent+=patch.length();progress.update(sent);
-   }
-   if(scanned<100)break;
+   request(endpoint(ctx,"items",token),"PATCH",patch.toString());
+   sent+=scanned;progress.update(sent);
+   if(scanned<50)break;
   }
   return sent;
  }
