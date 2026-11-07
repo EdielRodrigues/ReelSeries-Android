@@ -114,6 +114,14 @@ public class LocalCatalog extends SQLiteOpenHelper {
   args.add(String.valueOf(Math.max(1,Math.min(limit,500))));args.add(String.valueOf(Math.max(0,offset)));
   try(Cursor cur=getReadableDatabase().rawQuery(sql,args.toArray(new String[0]))){while(cur.moveToNext()){JSONObject o=new JSONObject();try{for(int i=0;i<6;i++)o.put(cur.getColumnName(i),cur.getString(i));result.add(o);}catch(Exception ignored){}}}return result;
  }
+ public ArrayList<JSONObject> episodesForParent(String parentId){
+  ArrayList<JSONObject> result=new ArrayList<>();
+  if(parentId==null||!parentId.startsWith("xtream_"))return result;
+  try(Cursor c=getReadableDatabase().rawQuery("SELECT id,nome,categoria,capa,url,sinopse FROM media WHERE grupo=? ORDER BY nome",new String[]{"xtream_parent:"+parentId})){
+   while(c.moveToNext()){JSONObject o=new JSONObject();try{for(int i=0;i<6;i++)o.put(c.getColumnName(i),c.getString(i));result.add(o);}catch(Exception ignored){}}
+  }
+  return result;
+ }
  public ArrayList<JSONObject> episodeCandidates(String seriesName){
   ArrayList<JSONObject> result=new ArrayList<>();
   if(seriesName==null||seriesName.trim().isEmpty())return result;

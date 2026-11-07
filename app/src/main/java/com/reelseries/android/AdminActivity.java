@@ -416,15 +416,15 @@ public class AdminActivity extends Activity {
     String season=keys.next();org.json.JSONArray episodes=seasons.optJSONArray(season);if(episodes==null)continue;
     for(int i=0;i<episodes.length();i++){
      org.json.JSONObject ep=episodes.optJSONObject(i);if(ep==null)continue;
-     String episodeId=ep.optString("id","").trim();if(episodeId.isEmpty()||episodeId.contains("/")||episodeId.contains("\\")||episodeId.contains(".."))continue;
-     String ext=ep.optString("container_extension","mp4").replaceAll("[^a-zA-Z0-9]","");if(ext.isEmpty())ext="mp4";
+     String episodeId=ep.optString("id",ep.optString("episode_id","")).trim();if(episodeId.isEmpty()||episodeId.contains("/")||episodeId.contains("\\")||episodeId.contains(".."))continue;
+     String ext=ep.optString("container_extension",ep.optJSONObject("info")==null?"mp4":ep.optJSONObject("info").optString("container_extension","mp4")).replaceAll("[^a-zA-Z0-9]","");if(ext.isEmpty())ext="mp4";
      String seasonNum=ep.optString("season",season).replaceAll("[^0-9]","");if(seasonNum.isEmpty())seasonNum="1";
      String episodeNum=ep.optString("episode_num",String.valueOf(i+1)).replaceAll("[^0-9]","");if(episodeNum.isEmpty())episodeNum=String.valueOf(i+1);
      String url=base+"/series/"+java.net.URLEncoder.encode(user,"UTF-8")+"/"+java.net.URLEncoder.encode(pass,"UTF-8")+"/"+java.net.URLEncoder.encode(episodeId,"UTF-8")+"."+ext;
      String name=series[1]+" S"+seasonNum+"E"+episodeNum;
      String episodeTitle=ep.optString("title","").trim();if(!episodeTitle.isEmpty())name+=" - "+episodeTitle;
      String key="xtream_"+LocalCatalog.hash(base+"|"+user+"|episode|"+series[0]+"|"+episodeId);
-     catalog.save(db,key,name,series[2],series[3],url,series[4],series[2],origin);saved++;
+     catalog.save(db,key,name,series[2],series[3],url,series[4],"xtream_parent:"+series[5],origin);saved++;
     }
    }
    db.setTransactionSuccessful();

@@ -63,6 +63,8 @@ public class DetailsActivity extends Activity {
      }
     }catch(java.io.FileNotFoundException ignored){} // Série não incluída no catálogo original.
     LocalCatalog db=new LocalCatalog(this);
+    // Prioritize stable Xtream parent ID; retain title matching for legacy catalog records.
+    for(JSONObject v:db.episodesForParent(selected.optString("id","")))addEpisodeByParent(grouped,v);
     for(JSONObject v:db.episodeCandidates(SeriesHelper.name(selected)))addEpisode(grouped,wanted,v);
     runOnUiThread(()->{if(isFinishing())return;progress.setText(grouped.isEmpty()?"Nenhum episódio encontrado.":grouped.size()+" temporada(s) encontrada(s)");
      java.util.ArrayList<Integer> keys=new java.util.ArrayList<>(grouped.keySet());java.util.ArrayList<String> labels=new java.util.ArrayList<>();for(Integer k:keys)labels.add("Temporada "+k+" • "+grouped.get(k).size()+" episódios");
@@ -88,6 +90,12 @@ public class DetailsActivity extends Activity {
     });
    }catch(Exception e){runOnUiThread(()->progress.setText("Não foi possível carregar episódios: "+e.getMessage()));}
   }).start();
+ }
+ private static void addEpisodeByParent(java.util.TreeMap<Integer,java.util.TreeMap<Integer,JSONObject>> map,JSONObject v){
+  if(v==null)return;int[] n=SeriesHelper.numbers(v);if(n==null||n[0]<1||n[1]<1)return;
+  java.util.TreeMap<Integer,JSONObject> season=map.computeIfAbsent(n[0],k->new java.util.TreeMap<>());
+  JSONObject old=season.get(n[1]);String link=LocalCatalog.first(v,"url","video","link");
+  if(old==null||(!LocalCatalog.first(old,"url","video","link").startsWith("http")&&link.startsWith("http")))season.put(n[1],v);
  }
  private static void addEpisode(java.util.TreeMap<Integer,java.util.TreeMap<Integer,JSONObject>> map,String wanted,JSONObject v){if(v==null||!SeriesHelper.key(v).equals(wanted))return;int[] n=SeriesHelper.numbers(v);if(n==null||n[0]<1||n[1]<1)return;java.util.TreeMap<Integer,JSONObject> season=map.computeIfAbsent(n[0],k->new java.util.TreeMap<>());
  JSONObject old=season.get(n[1]);

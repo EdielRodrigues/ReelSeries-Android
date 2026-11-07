@@ -197,12 +197,23 @@ public class MainActivity extends Activity {
   });
  }
 
+ void forceCloudUpdate(){
+  if(com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser()==null){Toast.makeText(this,"Entre na sua conta para receber atualizações.",Toast.LENGTH_LONG).show();return;}
+  if(cloudBusy.get()){Toast.makeText(this,"Atualização já em andamento.",Toast.LENGTH_SHORT).show();return;}
+  getSharedPreferences("reel_cloud_cache_v194",MODE_PRIVATE).edit().remove("last_check").apply();
+  Toast.makeText(this,"Buscando atualizações do Firebase...",Toast.LENGTH_SHORT).show();loadCloud();
+ }
  // Painel lateral: início, perfil e grupos reais do catálogo IPTV local.
  private void showChannelSidebar(){
   final android.app.Dialog drawer=new android.app.Dialog(this);
   LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);panel.setBackgroundColor(0xff171e2a);panel.setPadding(dp(16),dp(16),dp(12),dp(12));
   TextView title=navText("REEL SÉRIES",19);title.setTypeface(null,1);title.setTextColor(0xffff5269);panel.addView(title);
   TextView home=navText("⌂  Início",17);home.setPadding(dp(10),dp(20),0,dp(18));panel.addView(home);home.setOnClickListener(v->{drawer.dismiss();channelGroup="";chooseCategory("Todos");});
+  if(com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser()!=null){
+   TextView receive=navText("↓  Receber atualizações do Firebase",16);
+   receive.setPadding(dp(10),dp(12),0,dp(12));receive.setTextColor(0xff7ee7bd);panel.addView(receive);
+   receive.setOnClickListener(v->{drawer.dismiss();forceCloudUpdate();});
+  }
   TextView profile=navText("♙  Meu perfil",17);profile.setPadding(dp(10),dp(10),0,dp(20));panel.addView(profile);profile.setOnClickListener(v->{drawer.dismiss();startActivity(new Intent(this,ProfileActivity.class));});
   TextView groupsTitle=navText("CATÁLOGO POR PASTAS",12);groupsTitle.setTextColor(0xffff5269);groupsTitle.setPadding(dp(10),dp(12),0,dp(10));panel.addView(groupsTitle);
   ScrollView scroll=new ScrollView(this);panel.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
