@@ -37,6 +37,17 @@ public final class FirebaseCatalogSync {
  private static String endpoint(Context ctx,String suffix,String token)throws Exception{
   return base(ctx)+"/catalogo_unico/"+suffix+".json"+(token==null?"":"?auth="+URLEncoder.encode(token,"UTF-8"));
  }
+ /** Three independent RTDB catalogs; original category names remain unchanged. */
+ private static String catalogPath(String category){
+  String c=category==null?"":category.toLowerCase(java.util.Locale.ROOT);
+  if(c.contains("iptv")||c.contains("tv ao vivo")||c.contains("canal")||c.equals("tv")||c.contains("televis"))return "catalogo_3_iptv";
+  if(c.contains("serie")||c.contains("série")||c.contains("novela")||c.contains("episod"))return "catalogo_1_series";
+  return "catalogo_2_filmes";
+ }
+ private static String catalogEndpoint(Context ctx,String folder,String id,String token)throws Exception{
+  return base(ctx)+"/"+folder+"/items"+(id==null?"":"/"+URLEncoder.encode(id,"UTF-8"))
+    +".json"+(token==null?"":"?auth="+URLEncoder.encode(token,"UTF-8"));
+ }
  private static JSONObject item(Cursor c)throws Exception{
   JSONObject o=new JSONObject();for(int i=0;i<c.getColumnCount();i++)o.put(c.getColumnName(i),c.isNull(i)?JSONObject.NULL:c.getString(i));return o;
  }
@@ -46,15 +57,18 @@ public final class FirebaseCatalogSync {
   while(true){
    String query="SELECT id,nome,categoria,capa,url,sinopse,grupo,origem,series_id,episode_id,parent_series_id,season_number,episode_number FROM media WHERE id>?"+(origin==null?"":" AND origem=?")+" ORDER BY id LIMIT 50";
    String[] args=origin==null?new String[]{last}:new String[]{last,origin};
-   JSONObject patch=new JSONObject();int scanned=0;
+   java.util.LinkedHashMap<String,JSONObject> batches=new java.util.LinkedHashMap<>();int scanned=0;
    try(Cursor c=sql.rawQuery(query,args)){
     while(c.moveToNext()){
      String id=c.getString(0);last=id;scanned++;
+     String folder=catalogPath(c.getString(2));
+     JSONObject patch=batches.get(folder);if(patch==null){patch=new JSONObject();batches.put(folder,patch);}
      patch.put(id,item(c));
     }
    }
    if(scanned==0)break;
-   request(endpoint(ctx,"items",token),"PATCH",patch.toString());
+   for(java.util.Map.Entry<String,JSONObject> batch:batches.entrySet())
+    request(catalogEndpoint(ctx,batch.getKey(),null,token),"PATCH",batch.getValue().toString());
    sent+=scanned;progress.update(sent);
    if(scanned<50)break;
   }
@@ -63,7 +77,7 @@ public final class FirebaseCatalogSync {
  public static void uploadOne(Context ctx,LocalCatalog db,String id,String token)throws Exception{
   try(Cursor c=db.getReadableDatabase().rawQuery("SELECT id,nome,categoria,capa,url,sinopse,grupo,origem,series_id,episode_id,parent_series_id,season_number,episode_number FROM media WHERE id=?",new String[]{id})){
    if(!c.moveToFirst())throw new IOException("Título não encontrado no banco local");
-   request(endpoint(ctx,"items/"+URLEncoder.encode(id,"UTF-8"),token),"PUT",item(c).toString());
+   request(catalogEndpoint(ctx,catalogPath(c.getString(2)),id,token),"PUT",item(c).toString());
   }
  }
  /** Lists direct child keys without downloading the full catalog. */
@@ -120,8 +134,7 @@ public final class FirebaseCatalogSync {
   }
  }
  public static void deleteAll(Context ctx,String token)throws Exception{
-  deleteFolderBatched(ctx,"catalogo_unico/items",token,n->{});
-  markChanged(ctx,token);
+  throw new IOException("Exclusão total desativada por segurança. Faça backup e migração antes de excluir catálogos.");
  }
  public static void deleteOne(Context ctx,String id,String token)throws Exception{
   request(endpoint(ctx,"items/"+URLEncoder.encode(id,"UTF-8"),token),"DELETE",null);
@@ -146,29 +159,35 @@ public final class FirebaseCatalogSync {
   return value.equals("null")?"legacy":value;
  }
  public static int download(Context ctx,LocalCatalog db,LocalCatalog.Progress progress)throws Exception{
-  String baseUrl=base(ctx)+"/catalogo_unico/items.json?orderBy=%22%24key%22&limitToFirst=201";
-  String last=null;int count=0;
-  for(int pages=0;pages<2000;pages++){
+  int count=0;
+  for(String folder:new String[]{"catalogo_1_series","catalogo_2_filmes","catalogo_3_iptv"})
+   count=downloadFolder(ctx,db,folder,count,progress);
+  // Compatibility for installations that have not yet migrated.
+  if(count==0)count=downloadFolder(ctx,db,"catalogo_unico",count,progress);
+  return count;
+ }
+ private static int downloadFolder(Context ctx,LocalCatalog db,String folder,int count,LocalCatalog.Progress progress)throws Exception{
+  String baseUrl=base(ctx)+"/"+folder+"/items.json?orderBy=%22%24key%22&limitToFirst=101";
+  String last=null;
+  for(int pages=0;pages<5000;pages++){
    String u=baseUrl+(last==null?"":"&startAt="+URLEncoder.encode(JSONObject.quote(last),"UTF-8"));
    String response=request(u,"GET",null);
    if(response.equals("null")||response.trim().isEmpty())break;
    JSONObject items=new JSONObject(response);ArrayList<String> keys=new ArrayList<>();Iterator<String> it=items.keys();while(it.hasNext())keys.add(it.next());Collections.sort(keys);
    if(keys.isEmpty())break;
-   int received=0;SQLiteDatabase sql=db.getWritableDatabase();sql.beginTransaction();
+   SQLiteDatabase sql=db.getWritableDatabase();sql.beginTransaction();
    try{
     for(String key:keys){if(last!=null&&key.equals(last))continue;JSONObject o=items.optJSONObject(key);if(o==null)continue;
      String id=o.optString("id",key);String incomingUrl=o.optString("url","");
-     if(incomingUrl.trim().isEmpty()){
-      try(Cursor old=sql.rawQuery("SELECT url FROM media WHERE id=?",new String[]{id})){
-       if(old.moveToFirst()&&!old.isNull(0))incomingUrl=old.getString(0);
-      }
+     if(incomingUrl.trim().isEmpty())try(Cursor old=sql.rawQuery("SELECT url FROM media WHERE id=?",new String[]{id})){
+      if(old.moveToFirst()&&!old.isNull(0))incomingUrl=old.getString(0);
      }
-     db.saveXtream(sql,id,o.optString("nome"),o.optString("categoria"),o.optString("capa"),incomingUrl,o.optString("sinopse"),o.optString("grupo"),o.optString("origem","Firebase"),o.optString("series_id"),o.optString("episode_id"),o.optString("parent_series_id"),o.optInt("season_number"),o.optInt("episode_number"));count++;received++;
+     db.saveXtream(sql,id,o.optString("nome"),o.optString("categoria"),o.optString("capa"),incomingUrl,o.optString("sinopse"),o.optString("grupo"),o.optString("origem","Firebase"),o.optString("series_id"),o.optString("episode_id"),o.optString("parent_series_id"),o.optInt("season_number"),o.optInt("episode_number"));count++;
     }
     sql.setTransactionSuccessful();
    }finally{sql.endTransaction();}
    String next=keys.get(keys.size()-1);if(next.equals(last))break;last=next;progress.update(count);
-   if(keys.size()<201)break;
+   if(keys.size()<101)break;
   }
   return count;
  }
