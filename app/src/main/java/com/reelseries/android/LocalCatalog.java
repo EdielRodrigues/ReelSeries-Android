@@ -19,11 +19,41 @@ public class LocalCatalog extends SQLiteOpenHelper {
  }
  public static String hash(String s){try{byte[] b=MessageDigest.getInstance("SHA-256").digest(s.getBytes("UTF-8"));StringBuilder x=new StringBuilder();for(int i=0;i<16;i++)x.append(String.format(Locale.US,"%02x",b[i]&255));return x.toString();}catch(Exception e){return Integer.toHexString(s.hashCode());}}
  public static String first(JSONObject o,String... keys){for(String k:keys){String v=o.optString(k,"");if(!v.isEmpty()&&!"null".equalsIgnoreCase(v))return v;}return "";}
- public int importJson(InputStream stream,Progress progress)throws Exception {JsonReader reader=new JsonReader(new InputStreamReader(stream,"UTF-8"));reader.setLenient(true);int count=0;SQLiteDatabase db=getWritableDatabase();boolean transaction=false;try{
- android.util.JsonToken t=reader.peek();if(t==android.util.JsonToken.BEGIN_OBJECT){reader.beginObject();boolean found=false;while(reader.hasNext()){String k=reader.nextName();if(k.equals("catalogo")||k.equals("items")||k.equals("filmes")||k.equals("data")||k.equals("registros")){if(reader.peek()==android.util.JsonToken.BEGIN_ARRAY){found=true;break;}else reader.skipValue();}else reader.skipValue();}if(!found)throw new IOException("JSON sem lista catalogo/items/filmes/data/registros");}else if(t!=android.util.JsonToken.BEGIN_ARRAY)throw new IOException("Formato JSON não reconhecido");
- reader.beginArray();db.beginTransaction();transaction=true;while(reader.hasNext()){JSONObject o=readObject(reader);if(o==null)continue;String name=first(o,"nome","titulo","title","name","tvg-name");if(name.isEmpty())continue;String url=first(o,"video","url","link","stream");String id=first(o,"id","_id","key");if(id.isEmpty())id="json_"+hash(name+"|"+url+"|"+first(o,"episodio","episode"));save(db,id,name,first(o,"categoria","category","tipo","group-title"),first(o,"capa","poster","imagem","image","logo","tvg-logo"),url,first(o,"sinopse","descricao","description","overview"),"","JSON");count++;if(count%100==0){db.setTransactionSuccessful();db.endTransaction();transaction=false;progress.update(count);db.beginTransaction();transaction=true;}}
- db.setTransactionSuccessful();db.endTransaction();transaction=false;progress.update(count);return count;
- }finally{if(transaction)db.endTransaction();reader.close();}}
+ /** Accepts legacy arrays and the keyed items object exported for each RTDB catalog. */
+ public int importJson(InputStream stream,Progress progress)throws Exception{
+  JsonReader reader=new JsonReader(new InputStreamReader(stream,"UTF-8"));
+  SQLiteDatabase db=getWritableDatabase();int count=0;boolean transaction=false;
+  try{
+   android.util.JsonToken t=reader.peek();
+   if(t==android.util.JsonToken.BEGIN_OBJECT){
+    reader.beginObject();boolean found=false;
+    while(reader.hasNext()){
+     String k=reader.nextName();
+     if(k.equals("catalogo")||k.equals("items")||k.equals("filmes")||k.equals("data")||k.equals("registros")){
+      android.util.JsonToken nested=reader.peek();
+      if(nested==android.util.JsonToken.BEGIN_ARRAY||nested==android.util.JsonToken.BEGIN_OBJECT){found=true;break;}
+     }
+     reader.skipValue();
+    }
+    if(!found)throw new IOException("JSON sem catálogo: esperado items ou lista de registros");
+   }else if(t!=android.util.JsonToken.BEGIN_ARRAY)throw new IOException("Formato JSON não reconhecido");
+   boolean keyed=reader.peek()==android.util.JsonToken.BEGIN_OBJECT;
+   if(keyed)reader.beginObject();else reader.beginArray();
+   db.beginTransaction();transaction=true;
+   while(reader.hasNext()){
+    String key=keyed?reader.nextName():"";
+    JSONObject o=readObject(reader);if(o==null)continue;
+    String name=first(o,"nome","titulo","title","name","tvg-name");if(name.isEmpty())continue;
+    String url=first(o,"video","url","link","stream");
+    String id=first(o,"id","_id","key");if(id.isEmpty())id=key.isEmpty()?"json_"+hash(name+"|"+url):key;
+    saveXtream(db,id,name,first(o,"categoria","category","tipo","group-title"),first(o,"capa","poster","imagem","image","logo","tvg-logo"),url,first(o,"sinopse","descricao","description","overview"),first(o,"grupo"),first(o,"origem","origin").isEmpty()?"JSON":first(o,"origem","origin"),first(o,"series_id"),first(o,"episode_id"),first(o,"parent_series_id"),o.optInt("season_number"),o.optInt("episode_number"));
+    count++;
+    if(count%100==0){db.setTransactionSuccessful();db.endTransaction();transaction=false;progress.update(count);db.beginTransaction();transaction=true;}
+   }
+   if(keyed)reader.endObject();else reader.endArray();
+   db.setTransactionSuccessful();db.endTransaction();transaction=false;progress.update(count);return count;
+  }finally{if(transaction)db.endTransaction();reader.close();}
+ }
  private JSONObject readObject(JsonReader r)throws IOException{if(r.peek()!=android.util.JsonToken.BEGIN_OBJECT){r.skipValue();return null;}JSONObject o=new JSONObject();r.beginObject();while(r.hasNext()){String k=r.nextName();android.util.JsonToken t=r.peek();try{if(t==android.util.JsonToken.STRING||t==android.util.JsonToken.NUMBER)o.put(k,r.nextString());else if(t==android.util.JsonToken.BOOLEAN)o.put(k,r.nextBoolean());else if(t==android.util.JsonToken.NULL){r.nextNull();}else r.skipValue();}catch(org.json.JSONException e){throw new IOException(e);}}r.endObject();return o;}
  public int importM3u(InputStream input,String origin,Progress progress)throws Exception{BufferedReader r=new BufferedReader(new InputStreamReader(input,"UTF-8"));SQLiteDatabase db=getWritableDatabase();int count=0;boolean transaction=false;String line,name="",group="",logo="",id="";try{db.beginTransaction();transaction=true;while((line=r.readLine())!=null){line=line.trim();if(line.startsWith("#EXTINF:")){name=line.contains(",")?line.substring(line.lastIndexOf(',')+1).trim():"";group=attribute(line,"group-title");logo=attribute(line,"tvg-logo");id=attribute(line,"tvg-id");}else if(!line.isEmpty()&&!line.startsWith("#")&&(line.startsWith("http://")||line.startsWith("https://"))){if(name.isEmpty())name="Canal "+(count+1);String key="m3u_"+hash(origin+"|"+(id.isEmpty()?name:id)+"|"+line);save(db,key,name,group.isEmpty()?"IPTV":group,logo,line,"",group,origin);count++;name="";group="";logo="";id="";if(count%100==0){db.setTransactionSuccessful();db.endTransaction();transaction=false;progress.update(count);db.beginTransaction();transaction=true;}}}db.setTransactionSuccessful();db.endTransaction();transaction=false;progress.update(count);return count;}finally{if(transaction)db.endTransaction();r.close();}}
  private static String attribute(String line,String key){String token=key+"=\"";int a=line.indexOf(token);if(a<0)return "";a+=token.length();int b=line.indexOf('"',a);return b<0?"":line.substring(a,b);}

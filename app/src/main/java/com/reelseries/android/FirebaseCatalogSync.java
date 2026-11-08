@@ -166,6 +166,11 @@ public final class FirebaseCatalogSync {
   if(count==0)count=downloadFolder(ctx,db,"catalogo_unico",count,progress);
   return count;
  }
+ /** Download only one of the three independent RTDB catalogs. */
+ public static int downloadCategory(Context ctx,LocalCatalog db,String folder,LocalCatalog.Progress progress)throws Exception{
+  if(!folder.equals("catalogo_1_series")&&!folder.equals("catalogo_2_filmes")&&!folder.equals("catalogo_3_iptv"))throw new IOException("Catálogo inválido");
+  return downloadFolder(ctx,db,folder,0,progress);
+ }
  private static int downloadFolder(Context ctx,LocalCatalog db,String folder,int count,LocalCatalog.Progress progress)throws Exception{
   String baseUrl=base(ctx)+"/"+folder+"/items.json?orderBy=%22%24key%22&limitToFirst=101";
   String last=null;
