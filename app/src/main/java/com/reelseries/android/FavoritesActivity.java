@@ -44,7 +44,7 @@ public class FavoritesActivity extends Activity {
   TextView remove=text("♥  Remover da lista",13,0xffff8195);remove.setPadding(0,dp(10),0,dp(6));info.addView(remove);
   remove.setOnClickListener(v->new AlertDialog.Builder(this).setMessage("Remover "+name+" da Minha Lista?").setNegativeButton("Cancelar",null).setPositiveButton("Remover",(d,w)->{getSharedPreferences("reel_favorites",MODE_PRIVATE).edit().remove(name).apply();refresh();}).show());
  }
- private void openDetails(JSONObject item){Intent i=new Intent(this,DetailsActivity.class);i.putExtra("item",item.toString());startActivity(i);}
+ private void openDetails(JSONObject item){AdultProtection.require(this,AdultProtection.adult(item),()->{Intent i=new Intent(this,DetailsActivity.class);i.putExtra("item",item.toString());startActivity(i);});}
  private void loadPoster(String url,ImageView image){if(!url.startsWith("https://"))return;new Thread(()->{HttpURLConnection c=null;try{c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);try(InputStream in=c.getInputStream()){BitmapFactory.Options opt=new BitmapFactory.Options();opt.inSampleSize=2;Bitmap b=BitmapFactory.decodeStream(in,null,opt);if(b!=null)runOnUiThread(()->{if(!isFinishing())image.setImageBitmap(b);});}}catch(Exception ignored){}finally{if(c!=null)c.disconnect();}}).start();}
  @Override protected void onDestroy(){if(catalog!=null)catalog.close();super.onDestroy();}
 }
