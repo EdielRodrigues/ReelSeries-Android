@@ -7,7 +7,7 @@ public class MainActivity extends Activity {
  final ExecutorService pool=Executors.newFixedThreadPool(3); final android.util.LruCache<String,Bitmap> cache=new android.util.LruCache<String,Bitmap>(16);
  GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos", channelGroup=""; int pageOffset=0; boolean loadingPage=false, endReached=false, bundledPaging=false; TextView moreButton, previousButton, pageLabel; int currentPage=0; static final int PAGE_SIZE=300; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; int localCatalogCount=0; boolean catalogLoadedOnce=false; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
  final ArrayList<JSONObject> heroItems=new ArrayList<>(); int heroIndex=0; boolean heroActive=false;
- Runnable heroTicker; android.widget.LinearLayout heroDots;
+ LinearLayout continueSectionView,continueCardsView;\n Runnable heroTicker; android.widget.LinearLayout heroDots;
  // Ten different highlights every 30 minutes; six-second slide interval.
  static final long HERO_ROTATE_MS=30L*60L*1000L;
  static final long HERO_SLIDE_MS=6000L;
@@ -15,46 +15,52 @@ public class MainActivity extends Activity {
  long heroBatchStart=0L;
  Runnable heroBatchTicker;
 
- int bg=Color.rgb(12,16,27), fg=Color.WHITE; final ArrayList<String> catNames=new ArrayList<>();
+ int bg=Color.rgb(10,10,13), fg=Color.WHITE; final ArrayList<String> catNames=new ArrayList<>();
  int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
- @Override public void onCreate(Bundle b){super.onCreate(b);checkApkUpdate();getWindow().setStatusBarColor(bg);getWindow().setNavigationBarColor(Color.BLACK);
+ @Override public void onCreate(Bundle b){super.onCreate(b);checkApkUpdate();getWindow().setStatusBarColor(bg);getWindow().setNavigationBarColor(0xff0b0b0e);
  LinearLayout layout=new LinearLayout(this);layout.setOrientation(1);layout.setBackgroundColor(bg);
- LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setPadding(dp(10),dp(8),dp(10),dp(8));layout.addView(header);
+ LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setPadding(dp(12),dp(8),dp(12),dp(8));layout.addView(header);
  TextView menu=navText("☰",25);header.addView(menu,new LinearLayout.LayoutParams(dp(39),dp(48)));menu.setOnClickListener(v->showChannelSidebar());
- TextView brand=navText("▣ REEL SÉRIES",17);brand.setSingleLine(true);brand.setEllipsize(android.text.TextUtils.TruncateAt.END);brand.setGravity(Gravity.CENTER_VERTICAL);brand.setTextColor(0xfff04458);brand.setTypeface(null,1);header.addView(brand,new LinearLayout.LayoutParams(0,dp(48),1));
+ TextView brand=navText("REEL  SÉRIES",19);brand.setSingleLine(true);brand.setEllipsize(android.text.TextUtils.TruncateAt.END);brand.setGravity(Gravity.CENTER_VERTICAL);brand.setTextColor(0xfff04458);brand.setTypeface(null,1);header.addView(brand,new LinearLayout.LayoutParams(0,dp(48),1));
  TextView searchIcon=navText("⌕",30);header.addView(searchIcon,new LinearLayout.LayoutParams(dp(39),dp(48)));searchIcon.setOnClickListener(v->{search.requestFocus();((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(search,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});
- TextView profile=navText("♟",25);header.addView(profile,new LinearLayout.LayoutParams(dp(39),dp(48)));profile.setOnClickListener(v->startActivity(new Intent(this,ProfileActivity.class)));
- TextView admin=navText("⚙",25);header.addView(admin,new LinearLayout.LayoutParams(dp(39),dp(48)));admin.setOnClickListener(v->startActivity(new Intent(this,AdminActivity.class)));
+ TextView profile=navText("◉",24);header.addView(profile,new LinearLayout.LayoutParams(dp(39),dp(48)));profile.setOnClickListener(v->startActivity(new Intent(this,ProfileActivity.class)));
+ TextView admin=navText("⚙",22);header.addView(admin,new LinearLayout.LayoutParams(dp(39),dp(48)));admin.setOnClickListener(v->startActivity(new Intent(this,AdminActivity.class)));
  ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);layout.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));LinearLayout content=new LinearLayout(this);content.setOrientation(1);content.setPadding(dp(15),0,dp(15),dp(14));scroll.addView(content);
- android.widget.FrameLayout hero=new android.widget.FrameLayout(this);hero.setBackgroundColor(0xff24202a);content.addView(hero,new LinearLayout.LayoutParams(-1,dp(455)));
- ImageView heroImage=new ImageView(this);heroImage.setScaleType(ImageView.ScaleType.FIT_CENTER);hero.addView(heroImage,new android.widget.FrameLayout.LayoutParams(-1,-1));
- View overlay=new View(this);overlay.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0x150b101b,0x660b101b,0xff0b101b}));hero.addView(overlay,new android.widget.FrameLayout.LayoutParams(-1,-1));
+ android.widget.FrameLayout hero=new android.widget.FrameLayout(this);hero.setBackgroundColor(0xff19191f);content.addView(hero,new LinearLayout.LayoutParams(-1,dp(390)));
+ ImageView heroImage=new ImageView(this);heroImage.setScaleType(ImageView.ScaleType.CENTER_CROP);hero.addView(heroImage,new android.widget.FrameLayout.LayoutParams(-1,-1));
+ View overlay=new View(this);overlay.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0x120b0b0e,0x770b0b0e,0xff0b0b0e}));hero.addView(overlay,new android.widget.FrameLayout.LayoutParams(-1,-1));
  LinearLayout heroCopy=new LinearLayout(this);heroCopy.setOrientation(1);heroCopy.setPadding(dp(14),dp(10),dp(14),dp(16));android.widget.FrameLayout.LayoutParams hp=new android.widget.FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);hero.addView(heroCopy,hp);
- TextView badge=navText("DESTAQUE  •  REEL SÉRIES",13);badge.setTypeface(null,1);badge.setTextColor(0xffff455e);heroCopy.addView(badge);
+ TextView badge=navText("●  EM DESTAQUE",12);badge.setTypeface(null,1);badge.setTextColor(0xffff455e);heroCopy.addView(badge);
  TextView heroTitle=navText("REEL SÉRIES",32);heroTitle.setTypeface(null,1);heroTitle.setMaxLines(2);heroCopy.addView(heroTitle);
  TextView heroDescription=navText("Seu catálogo de filmes, séries e canais em um só lugar.",14);heroDescription.setTextColor(0xffc6c9d2);heroDescription.setMaxLines(3);heroCopy.addView(heroDescription);
  LinearLayout actions=new LinearLayout(this);actions.setPadding(0,dp(8),0,0);heroCopy.addView(actions);
- TextView watch=actionText("▶  Assistir",true);actions.addView(watch,new LinearLayout.LayoutParams(0,dp(49),1));TextView more=actionText("ⓘ Informações",false);LinearLayout.LayoutParams mp=new LinearLayout.LayoutParams(0,dp(49),1);mp.leftMargin=dp(8);actions.addView(more,mp);
+ TextView watch=actionText("▶  Assistir",true);actions.addView(watch,new LinearLayout.LayoutParams(0,dp(49),1));TextView more=actionText("ⓘ Detalhes",false);LinearLayout.LayoutParams mp=new LinearLayout.LayoutParams(0,dp(49),1);mp.leftMargin=dp(8);actions.addView(more,mp);
  final JSONObject[] featured={null};watch.setOnClickListener(v->{if(featured[0]!=null){AdultProtection.require(this,AdultProtection.adult(featured[0]),()->{String url=featured[0].optString("url",featured[0].optString("video"));if(url.startsWith("http")){Intent i=new Intent(this,PlayerActivity.class);i.putExtra("url",url);i.putExtra("name",featured[0].optString("nome"));startActivity(i);}else details(featured[0]);});}});more.setOnClickListener(v->{if(featured[0]!=null)details(featured[0]);});
  heroDots=new LinearLayout(this);heroDots.setGravity(Gravity.CENTER);heroDots.setPadding(0,dp(8),0,dp(2));content.addView(heroDots,new LinearLayout.LayoutParams(-1,dp(25)));
  final float[] touchX={0};hero.setOnTouchListener((v,e)->{if(e.getAction()==android.view.MotionEvent.ACTION_DOWN){touchX[0]=e.getX();return true;}if(e.getAction()==android.view.MotionEvent.ACTION_UP){float delta=e.getX()-touchX[0];if(Math.abs(delta)>dp(45)){showHero((heroIndex+(delta<0?1:-1)+heroItems.size())%Math.max(1,heroItems.size()),heroImage,heroTitle,heroDescription,featured);return true;}return false;}return true;});
  heroTicker=new Runnable(){public void run(){if(!heroActive)return;refreshHeroBatchIfNeeded(heroImage,heroTitle,heroDescription,featured);if(heroItems.size()>1){showHero((heroIndex+1)%heroItems.size(),heroImage,heroTitle,heroDescription,featured);}}};
  heroBatchTicker=new Runnable(){public void run(){if(!heroActive)return;refreshHeroBatchIfNeeded(heroImage,heroTitle,heroDescription,featured);scheduleHeroBatchCheck();}};
- search=new EditText(this);search.setSingleLine(true);search.setHint("Pesquisar filme, série ou episódio");search.setTextColor(fg);search.setHintTextColor(0xff9fa5b3);search.setBackgroundColor(0xff171e2a);search.setPadding(dp(12),0,dp(12),0);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,dp(48));sp.topMargin=dp(20);content.addView(search,sp);
- LinearLayout sort=new LinearLayout(this);sort.setGravity(Gravity.CENTER_VERTICAL);sort.setPadding(0,dp(10),0,0);content.addView(sort);TextView heading=navText("Em destaque",23);heading.setTypeface(null,1);sort.addView(heading,new LinearLayout.LayoutParams(0,-2,1));categories=new Spinner(this);sort.addView(categories,new LinearLayout.LayoutParams(dp(155),dp(48)));catNames.add("Todas");categories.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,catNames));
+ LinearLayout continueSection=new LinearLayout(this);continueSection.setOrientation(1);
+ LinearLayout.LayoutParams cs=new LinearLayout.LayoutParams(-1,-2);cs.topMargin=dp(8);content.addView(continueSection,cs);
+ TextView continueHeading=navText("Continuar assistindo   ›",20);continueHeading.setTypeface(null,1);continueHeading.setPadding(0,dp(5),0,dp(9));continueSection.addView(continueHeading);
+ continueHeading.setOnClickListener(v->startActivity(new Intent(this,ContinueWatchingActivity.class)));
+ LinearLayout continueCards=new LinearLayout(this);continueCards.setOrientation(0);continueSection.addView(continueCards);
+ continueSectionView=continueSection;continueCardsView=continueCards;refreshContinueCards(continueSection,continueCards);
+ search=new EditText(this);search.setSingleLine(true);search.setHint("Pesquisar filme, série ou episódio");search.setTextColor(fg);search.setHintTextColor(0xff9fa5b3);search.setBackground(rounded(0xff1b1b22,12));search.setPadding(dp(12),0,dp(12),0);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,dp(48));sp.topMargin=dp(20);content.addView(search,sp);
+ LinearLayout sort=new LinearLayout(this);sort.setGravity(Gravity.CENTER_VERTICAL);sort.setPadding(0,dp(10),0,0);content.addView(sort);TextView heading=navText("Explore o catálogo",21);heading.setTypeface(null,1);sort.addView(heading,new LinearLayout.LayoutParams(0,-2,1));categories=new Spinner(this);sort.addView(categories,new LinearLayout.LayoutParams(dp(155),dp(48)));catNames.add("Todas");categories.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,catNames));
  status=navText("Carregando catálogo...",12);status.setTextColor(0xffaeb6c7);content.addView(status);
  grid=new GridView(this);grid.setNumColumns(3);grid.setVerticalSpacing(dp(12));grid.setHorizontalSpacing(dp(9));grid.setClipToPadding(false);grid.setPadding(0,dp(10),0,dp(12));grid.setNestedScrollingEnabled(true);content.addView(grid,new LinearLayout.LayoutParams(-1,dp(460)));moreButton=actionText("CARREGAR MAIS TÍTULOS  ↓",false);LinearLayout.LayoutParams moreParams=new LinearLayout.LayoutParams(-1,dp(52));moreParams.topMargin=dp(10);LinearLayout pager=new LinearLayout(this);pager.setGravity(Gravity.CENTER_VERTICAL);content.addView(pager,moreParams);
   previousButton=actionText("‹ ANTERIOR",false);pager.addView(previousButton,new LinearLayout.LayoutParams(0,dp(52),1));
   pageLabel=navText("Página 1",12);pageLabel.setGravity(Gravity.CENTER);pager.addView(pageLabel,new LinearLayout.LayoutParams(dp(85),dp(52)));
   pager.addView(moreButton,new LinearLayout.LayoutParams(0,dp(52),1));
   previousButton.setOnClickListener(v->openPage(currentPage-1));moreButton.setOnClickListener(v->openPage(currentPage+1));setContentView(layout);
- LinearLayout bottom=new LinearLayout(this);bottom.setGravity(Gravity.CENTER);bottom.setBackgroundColor(0xff101622);layout.addView(bottom,new LinearLayout.LayoutParams(-1,dp(62)));
- String[] tabs={"⌂\nInício","▶\nFilmes","▣\nSéries","▤\nLista","⌕\nBuscar"};for(int t=0;t<tabs.length;t++){final int idx=t;TextView tab=navText(tabs[t],12);tab.setGravity(Gravity.CENTER);bottom.addView(tab,new LinearLayout.LayoutParams(0,-1,1));tab.setOnClickListener(v->{if(idx==4){search.requestFocus();((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(search,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);}else chooseCategory(idx==0?"Todos":idx==1?"Filmes":idx==2?"Séries":"TV / IPTV");});}
+ LinearLayout bottom=new LinearLayout(this);bottom.setGravity(Gravity.CENTER);bottom.setBackgroundColor(0xff15151b);layout.addView(bottom,new LinearLayout.LayoutParams(-1,dp(62)));
+ String[] tabs={"⌂\nInício","▶\nFilmes","▣\nSéries","▤\nTV","◉\nPerfil"};for(int t=0;t<tabs.length;t++){final int idx=t;TextView tab=navText(tabs[t],12);tab.setGravity(Gravity.CENTER);tab.setTextColor(idx==0?0xfff04458:0xffb6b6c0);bottom.addView(tab,new LinearLayout.LayoutParams(0,-1,1));tab.setOnClickListener(v->{if(idx==4){startActivity(new Intent(this,ProfileActivity.class));}else chooseCategory(idx==0?"Todos":idx==1?"Filmes":idx==2?"Séries":"TV / IPTV");});}
  adapter=new BaseAdapter(){public int getCount(){return shown.size();}public Object getItem(int p){return shown.get(p);}public long getItemId(int p){return p;}
  public View getView(int p,View old,android.view.ViewGroup parent){
  LinearLayout box;ImageView cover;TextView label;
  if(old instanceof LinearLayout && ((LinearLayout)old).getChildCount()==2){box=(LinearLayout)old;cover=(ImageView)box.getChildAt(0);label=(TextView)box.getChildAt(1);}
- else{box=new LinearLayout(MainActivity.this);box.setOrientation(1);box.setBackgroundColor(0xff1c2432);box.setPadding(dp(5),dp(5),dp(5),dp(7));cover=new ImageView(MainActivity.this);cover.setBackgroundColor(0xff30394b);cover.setScaleType(ImageView.ScaleType.CENTER_CROP);box.addView(cover,new LinearLayout.LayoutParams(-1,dp(165)));label=new TextView(MainActivity.this);label.setTextColor(fg);label.setTextSize(12);label.setMaxLines(2);label.setEllipsize(android.text.TextUtils.TruncateAt.END);box.addView(label);}
+ else{box=new LinearLayout(MainActivity.this);box.setOrientation(1);box.setBackground(rounded(0xff202027,12));box.setPadding(dp(5),dp(5),dp(5),dp(7));cover=new ImageView(MainActivity.this);cover.setBackgroundColor(0xff34343e);cover.setScaleType(ImageView.ScaleType.CENTER_CROP);box.addView(cover,new LinearLayout.LayoutParams(-1,dp(165)));label=new TextView(MainActivity.this);label.setTextColor(fg);label.setTextSize(12);label.setMaxLines(2);label.setEllipsize(android.text.TextUtils.TruncateAt.END);box.addView(label);}
  JSONObject item=shown.get(p);label.setText(item.optString("nome"));loadCover(item.optString("capa"),cover);return box;
  }};grid.setAdapter(adapter);
  grid.setOnItemClickListener((a,v,p,id)->details(shown.get(p)));
@@ -151,8 +157,44 @@ public class MainActivity extends Activity {
    }catch(Exception e){android.util.Log.w("ReelSeriesUpdate","Não foi possível consultar atualização",e);}
   });
  }
+ void refreshContinueCards(LinearLayout section,LinearLayout cards){
+  cards.removeAllViews();
+  ArrayList<JSONObject> recent=new ArrayList<>();
+  for(java.util.Map.Entry<String,?> entry:getSharedPreferences("reel_continue_history",MODE_PRIVATE).getAll().entrySet()){
+   if(!(entry.getValue() instanceof String))continue;
+   try{JSONObject item=new JSONObject((String)entry.getValue());
+    if(item.optLong("position")>=5000&&item.optString("url").startsWith("http"))recent.add(item);
+   }catch(Exception ignored){}
+  }
+  java.util.Collections.sort(recent,(a,b)->Long.compare(b.optLong("updated"),a.optLong("updated")));
+  section.setVisibility(recent.isEmpty()?View.GONE:View.VISIBLE);
+  for(int i=0;i<Math.min(2,recent.size());i++){
+   JSONObject item=recent.get(i);String name=item.optString("name","Vídeo"),url=item.optString("url");
+   long pos=item.optLong("position"),duration=item.optLong("duration");
+   LinearLayout tile=new LinearLayout(this);tile.setOrientation(1);tile.setBackground(rounded(0xff222229,10));
+   LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(0,-2,1);if(i>0)tp.leftMargin=dp(9);cards.addView(tile,tp);
+   ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
+   poster.setBackgroundColor(0xff303039);tile.addView(poster,new LinearLayout.LayoutParams(-1,dp(108)));
+   loadCover(item.optString("capa",""),poster);
+   ProgressBar progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
+   progress.setMax(1000);progress.setProgress(duration>0?(int)Math.min(1000,pos*1000/duration):0);
+   progress.setProgressTintList(android.content.res.ColorStateList.valueOf(0xffef3b50));
+   progress.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff494951));
+   tile.addView(progress,new LinearLayout.LayoutParams(-1,dp(4)));
+   TextView label=navText(name,12);label.setMaxLines(1);label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+   label.setPadding(dp(8),dp(8),dp(8),dp(10));tile.addView(label);
+   tile.setOnClickListener(v->{Intent intent=new Intent(this,PlayerActivity.class);
+    intent.putExtra("url",url);intent.putExtra("name",name);
+    intent.putExtra("capa",item.optString("capa",""));intent.putExtra("resume_position",pos);
+    startActivity(intent);});
+  }
+ }
+ android.graphics.drawable.GradientDrawable rounded(int color,int radius){
+  android.graphics.drawable.GradientDrawable shape=new android.graphics.drawable.GradientDrawable();
+  shape.setColor(color);shape.setCornerRadius(dp(radius));return shape;
+ }
  TextView navText(String value,int size){TextView v=new TextView(this);v.setText(value);v.setTextColor(Color.WHITE);v.setTextSize(size);v.setGravity(Gravity.CENTER_VERTICAL);return v;}
- TextView actionText(String value,boolean primary){TextView v=navText(value,14);v.setGravity(Gravity.CENTER);v.setTypeface(null,1);v.setTextColor(primary?0xff11151d:Color.WHITE);android.graphics.drawable.GradientDrawable bg=new android.graphics.drawable.GradientDrawable();bg.setColor(primary?Color.WHITE:0xff30333c);bg.setCornerRadius(dp(12));v.setBackground(bg);return v;}
+ TextView actionText(String value,boolean primary){TextView v=navText(value,14);v.setGravity(Gravity.CENTER);v.setTypeface(null,1);v.setTextColor(Color.WHITE);android.graphics.drawable.GradientDrawable bg=new android.graphics.drawable.GradientDrawable();bg.setColor(primary?0xffe6384b:0xff34343d);bg.setCornerRadius(dp(12));v.setBackground(bg);return v;}
  void chooseCategory(String q){channelGroup="";mode=q;selected="Todas";if(categories!=null&&categories.getSelectedItemPosition()!=0)categories.setSelection(0);resetFeed();}
  // Persistent SQLite cache: check at most once per 24h, never redownload on every open.
  final java.util.concurrent.atomic.AtomicBoolean cloudBusy=new java.util.concurrent.atomic.AtomicBoolean(false);
@@ -370,7 +412,7 @@ public class MainActivity extends Activity {
   android.view.ViewGroup.LayoutParams params=grid.getLayoutParams();
   if(params!=null&&params.height!=height){params.height=height;grid.setLayoutParams(params);}
  }
- @Override protected void onResume(){super.onResume();heroActive=true;if(heroBatchTicker!=null){handler.removeCallbacks(heroBatchTicker);handler.post(heroBatchTicker);}if(heroTicker!=null){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,HERO_SLIDE_MS);}if(search!=null){String wanted=getIntent().getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){getIntent().removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}if(!catalogLoadedOnce)resetFeed();if(FirebaseCatalogSync.configured(this))loadCloud();}}
+ @Override protected void onResume(){super.onResume();if(continueSectionView!=null)refreshContinueCards(continueSectionView,continueCardsView);heroActive=true;if(heroBatchTicker!=null){handler.removeCallbacks(heroBatchTicker);handler.post(heroBatchTicker);}if(heroTicker!=null){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,HERO_SLIDE_MS);}if(search!=null){String wanted=getIntent().getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){getIntent().removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}if(!catalogLoadedOnce)resetFeed();if(FirebaseCatalogSync.configured(this))loadCloud();}}
  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(search!=null){String wanted=intent.getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){intent.removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}}}
  void details(JSONObject o){AdultProtection.require(this,AdultProtection.adult(o),()->{Intent i=new Intent(this,DetailsActivity.class);i.putExtra("item",o.toString());startActivity(i);});}
  void loadCover(String url,ImageView image){if(url.equals(image.getTag()) && image.getDrawable()!=null)return;image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag()))image.setImageBitmap(bitmap);});}}catch(Exception ignored){}});}
