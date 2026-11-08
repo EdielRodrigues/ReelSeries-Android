@@ -7,7 +7,8 @@ public class MainActivity extends Activity {
  final ExecutorService pool=Executors.newFixedThreadPool(3); final android.util.LruCache<String,Bitmap> cache=new android.util.LruCache<String,Bitmap>(16);
  GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos", channelGroup=""; int pageOffset=0; boolean loadingPage=false, endReached=false, bundledPaging=false; TextView moreButton, previousButton, pageLabel; int currentPage=0; static final int PAGE_SIZE=300; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; int localCatalogCount=0; boolean catalogLoadedOnce=false; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
  final ArrayList<JSONObject> heroItems=new ArrayList<>(); int heroIndex=0; boolean heroActive=false;
- LinearLayout continueSectionView,continueCardsView;\n Runnable heroTicker; android.widget.LinearLayout heroDots;
+ LinearLayout continueSectionView,continueCardsView;
+ Runnable heroTicker; android.widget.LinearLayout heroDots;
  // Ten different highlights every 30 minutes; six-second slide interval.
  static final long HERO_ROTATE_MS=30L*60L*1000L;
  static final long HERO_SLIDE_MS=6000L;
