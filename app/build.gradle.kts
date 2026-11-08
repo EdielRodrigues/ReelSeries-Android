@@ -3,6 +3,19 @@ android {
  namespace = "com.reelseries.android"
  compileSdk = 35
  defaultConfig { applicationId = "com.reelseries.android"; minSdk = 24; targetSdk = 35; versionCode = 300000; versionName = "19.1" }
+ signingConfigs {
+  getByName("debug") {
+   storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
+   storePassword = "android"
+   keyAlias = "androiddebugkey"
+   keyPassword = "android"
+  }
+ }
+ buildTypes {
+  getByName("debug") {
+   signingConfig = signingConfigs.getByName("debug")
+  }
+ }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
 dependencies {
