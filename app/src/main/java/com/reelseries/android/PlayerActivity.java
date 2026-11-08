@@ -56,7 +56,7 @@ public class PlayerActivity extends Activity {
   handler.postDelayed(this,5000);
  }};
  private void beginLiveWatch(){handler.removeCallbacks(liveWatchdog);liveWatchActive=isXtreamLive(url);liveReconnects=0;liveLastPosition=-1;liveStableSince=0;liveLastProgressAt=android.os.SystemClock.elapsedRealtime();if(liveWatchActive)handler.postDelayed(liveWatchdog,5000);}
- private boolean liveHlsRetried=false;private String liveFirstError="";private ExoPlayer player;private PlayerView playerView;private FrameLayout playerRoot;private WebView webPlayer;private boolean usingWeb=false;private long savedPosition=0;private String url;private boolean playWhenReady=true;
+ private boolean liveHlsRetried=false;private String liveFirstError="";private ExoPlayer player;private PlayerView playerView;private FrameLayout playerRoot;private WebView webPlayer;private View webFullscreenView;private WebChromeClient.CustomViewCallback webFullscreenCallback;private boolean usingWeb=false;private long savedPosition=0;private String url;private boolean playWhenReady=true;
  private CastContext castContext;
  private String castError="";
  private SessionManagerListener<CastSession> castListener;
@@ -242,7 +242,7 @@ public class PlayerActivity extends Activity {
   }
  private void showCastDevices(){
    requestCastNotificationPermission();
-  if(usingWeb){Toast.makeText(this,"Transmissão deste site depende do próprio player incorporado",Toast.LENGTH_LONG).show();return;}
+  if(usingWeb){Toast.makeText(this,"Cast direto só funciona com URL de mídia compatível; para sites use espelhamento ou player externo.",Toast.LENGTH_LONG).show();return;}
   if(castContext!=null){
    CastSession current=castContext.getSessionManager().getCurrentCastSession();
    if(current!=null&&current.isConnected()){showTvControls();return;}
@@ -468,7 +468,7 @@ public class PlayerActivity extends Activity {
   }catch(Exception e){android.util.Log.e("ReelSeriesCast","Erro na busca",e);}
  }
 handler.removeCallbacks(tvUpdater);handler.post(tvUpdater);
-if(webPlayer!=null){webPlayer.onResume();return;}
+if(webPlayer!=null){webPlayer.onResume();handler.removeCallbacks(webProgressTick);handler.postDelayed(webProgressTick,5000);return;}
 if(isWebLink(url)){openWebPlayer(url);return;}
 player=newConfiguredPlayer();playerView.setPlayer(player);
  player.addListener(new Player.Listener(){
@@ -565,6 +565,37 @@ player=newConfiguredPlayer();playerView.setPlayer(player);
   else if(l.contains(".mpd"))b.setMimeType(MimeTypes.APPLICATION_MPD);
   return b.build();
  }
+ private final Runnable webProgressTick=new Runnable(){@Override public void run(){
+  if(webPlayer==null||!usingWeb)return;
+  try{webPlayer.evaluateJavascript("(function(){var v=document.querySelector('video');if(!v||!isFinite(v.currentTime)||!isFinite(v.duration))return '';return JSON.stringify({p:Math.floor(v.currentTime*1000),d:Math.floor(v.duration*1000)});})()",result->{
+   try{if(result==null||result.equals("null")||result.equals("\"\""))return;
+    String json=new org.json.JSONTokener(result).nextValue().toString();
+    if(json.startsWith("{")){JSONObject data=new JSONObject(json);long pos=data.optLong("p",0),dur=data.optLong("d",0);
+     if(pos>2000&&dur>0&&!isXtreamLive(url)){
+      getSharedPreferences("reel_playback_progress",MODE_PRIVATE).edit().putLong(progressKey(url),pos).apply();saveHistory(pos,dur);
+     }
+    }
+   }catch(Exception ignored){}
+  });}catch(Exception ignored){}
+  handler.postDelayed(this,5000);
+ }};
+ private void restoreWebPosition(){
+  if(webPlayer==null||url==null||isXtreamLive(url))return;
+  long pos=Math.max(stored(url),getIntent().getLongExtra("resume_position",0));
+  if(pos<=0)return;
+  final double seconds=pos/1000.0;
+  // Apenas vídeo HTML5 acessível no documento principal. Não tenta acessar iframes de outros domínios.
+  webPlayer.evaluateJavascript("(function(){var v=document.querySelector('video');if(v&&v.readyState>=1&&isFinite(v.duration)){v.currentTime="+seconds+";return true;}return false;})()",null);
+ }
+ private void exitWebFullscreen(){
+  if(webFullscreenView!=null){
+   if(playerRoot!=null)playerRoot.removeView(webFullscreenView);
+   webFullscreenView=null;
+   if(webFullscreenCallback!=null){webFullscreenCallback.onCustomViewHidden();webFullscreenCallback=null;}
+   setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+   if(webPlayer!=null)webPlayer.setVisibility(View.VISIBLE);
+  }
+ }
  private void openWebPlayer(String link){
   if(playerRoot==null||isFinishing())return;
   if(player!=null){player.pause();playerView.setPlayer(null);player.release();player=null;}
@@ -574,19 +605,30 @@ player=newConfiguredPlayer();playerView.setPlayer(player);
   settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(true);
   settings.setMediaPlaybackRequiresUserGesture(false);
   webPlayer.setBackgroundColor(0xff000000);
-  webPlayer.setWebViewClient(new WebViewClient());
-  webPlayer.setWebChromeClient(new WebChromeClient());
+  webPlayer.setWebViewClient(new WebViewClient(){@Override public void onPageFinished(WebView view,String loaded){handler.postDelayed(()->restoreWebPosition(),1500);}});
+  webPlayer.setWebChromeClient(new WebChromeClient(){
+   @Override public void onShowCustomView(View view,CustomViewCallback callback){
+    if(webFullscreenView!=null){callback.onCustomViewHidden();return;}
+    webFullscreenView=view;webFullscreenCallback=callback;
+    webPlayer.setVisibility(View.GONE);
+    playerRoot.addView(view,new FrameLayout.LayoutParams(-1,-1));
+    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+   }
+   @Override public void onHideCustomView(){exitWebFullscreen();}
+  });
   playerRoot.addView(webPlayer,0,new FrameLayout.LayoutParams(-1,-1));
   webPlayer.loadUrl(link);
+  handler.removeCallbacks(webProgressTick);handler.postDelayed(webProgressTick,5000);
  }
  private void closeWebPlayer(){
+  handler.removeCallbacks(webProgressTick);exitWebFullscreen();
   if(webPlayer!=null){WebView w=webPlayer;webPlayer=null;
    if(playerRoot!=null)playerRoot.removeView(w);
    w.stopLoading();w.loadUrl("about:blank");w.destroy();
   }
   usingWeb=false;if(playerView!=null)playerView.setVisibility(View.VISIBLE);
  }
- @Override protected void onStop(){if(casting && castContext!=null){try{CastSession cs=castContext.getSessionManager().getCurrentCastSession();if(cs!=null && cs.getRemoteMediaClient()!=null){RemoteMediaClient rc=cs.getRemoteMediaClient();saveHistory(rc.getApproximateStreamPosition(),rc.getMediaInfo()==null?0:rc.getMediaInfo().getStreamDuration());}}catch(Exception ignored){}}if(mediaRouter!=null&&routeCallback!=null){mediaRouter.removeCallback(routeCallback);routeCallback=null;}if(castContext!=null&&castListener!=null)castContext.getSessionManager().removeSessionManagerListener(castListener,CastSession.class);handler.removeCallbacks(periodic);handler.removeCallbacks(tvUpdater);liveWatchActive=false;handler.removeCallbacks(liveWatchdog);if(webPlayer!=null)webPlayer.onPause();if(player!=null){saveProgress();savedPosition=player.getCurrentPosition();playWhenReady=player.getPlayWhenReady();restored=true;playerView.setPlayer(null);player.release();player=null;}super.onStop();}
+ @Override protected void onStop(){if(casting && castContext!=null){try{CastSession cs=castContext.getSessionManager().getCurrentCastSession();if(cs!=null && cs.getRemoteMediaClient()!=null){RemoteMediaClient rc=cs.getRemoteMediaClient();saveHistory(rc.getApproximateStreamPosition(),rc.getMediaInfo()==null?0:rc.getMediaInfo().getStreamDuration());}}catch(Exception ignored){}}if(mediaRouter!=null&&routeCallback!=null){mediaRouter.removeCallback(routeCallback);routeCallback=null;}if(castContext!=null&&castListener!=null)castContext.getSessionManager().removeSessionManagerListener(castListener,CastSession.class);handler.removeCallbacks(periodic);handler.removeCallbacks(tvUpdater);liveWatchActive=false;handler.removeCallbacks(liveWatchdog);if(webPlayer!=null){handler.removeCallbacks(webProgressTick);webPlayer.onPause();}if(player!=null){saveProgress();savedPosition=player.getCurrentPosition();playWhenReady=player.getPlayWhenReady();restored=true;playerView.setPlayer(null);player.release();player=null;}super.onStop();}
  @Override protected void onDestroy(){closeWebPlayer();stopObservingRemote();super.onDestroy();}
  @Override protected void onSaveInstanceState(Bundle b){b.putLong("position",player!=null?player.getCurrentPosition():savedPosition);b.putBoolean("playing",player!=null?player.getPlayWhenReady():playWhenReady);b.putInt("playlistIndex",playlistIndex);b.putString("url",url);super.onSaveInstanceState(b);}
 }
