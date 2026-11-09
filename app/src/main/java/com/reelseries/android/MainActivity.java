@@ -4,8 +4,8 @@ import android.app.*;import android.os.*;import android.content.*;import android
 
 public class MainActivity extends Activity {
  final ArrayList<JSONObject> all=new ArrayList<>(), shown=new ArrayList<>(); final java.util.HashMap<String,JSONObject> cloud=new java.util.HashMap<>();
- final ExecutorService pool=Executors.newFixedThreadPool(3); final android.util.LruCache<String,Bitmap> cache=new android.util.LruCache<String,Bitmap>(24);
- GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos", channelGroup=""; int pageOffset=0; boolean loadingPage=false, endReached=false, bundledPaging=false; TextView moreButton, previousButton, pageLabel; int currentPage=0; static final int PAGE_SIZE=48; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; int localCatalogCount=0; boolean catalogLoadedOnce=false; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
+ final ExecutorService pool=Executors.newFixedThreadPool(3); final java.util.concurrent.ExecutorService catalogQueries=Executors.newSingleThreadExecutor(); final android.util.LruCache<String,Bitmap> cache=new android.util.LruCache<String,Bitmap>(24);
+ GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos", channelGroup=""; int pageOffset=0; boolean loadingPage=false, endReached=false, bundledPaging=false; TextView moreButton, previousButton, pageLabel; int currentPage=0; static final int PAGE_SIZE=100; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; int localCatalogCount=0; boolean catalogLoadedOnce=false; boolean pageLoadFailed=false; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
  final ArrayList<JSONObject> heroItems=new ArrayList<>(); int heroIndex=0; boolean heroActive=false;
  LinearLayout continueSectionView,continueCardsView;
  Runnable heroTicker; android.widget.LinearLayout heroDots;
@@ -26,7 +26,26 @@ public class MainActivity extends Activity {
  TextView searchIcon=navText("⌕",30);header.addView(searchIcon,new LinearLayout.LayoutParams(dp(39),dp(48)));searchIcon.setOnClickListener(v->{search.requestFocus();((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(search,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});
  TextView profile=navText("◉",24);header.addView(profile,new LinearLayout.LayoutParams(dp(39),dp(48)));profile.setOnClickListener(v->startActivity(new Intent(this,ProfileActivity.class)));
  TextView admin=navText("⚙",22);header.addView(admin,new LinearLayout.LayoutParams(dp(39),dp(48)));admin.setOnClickListener(v->startActivity(new Intent(this,AdminActivity.class)));
- ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);layout.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));LinearLayout content=new LinearLayout(this);content.setOrientation(1);content.setPadding(dp(15),0,dp(15),dp(14));scroll.addView(content);
+ ScrollView scroll=new ScrollView(this){
+  float downY; boolean pulling=false;
+  @Override public boolean onInterceptTouchEvent(android.view.MotionEvent e){
+   if(e.getActionMasked()==android.view.MotionEvent.ACTION_DOWN){downY=e.getY();pulling=false;}
+   if(e.getActionMasked()==android.view.MotionEvent.ACTION_MOVE && getScrollY()==0 && e.getY()-downY>dp(75)){
+    pulling=true;return true;
+   }
+   return super.onInterceptTouchEvent(e);
+  }
+  @Override public boolean onTouchEvent(android.view.MotionEvent e){
+   if(pulling){
+    if(e.getActionMasked()==android.view.MotionEvent.ACTION_UP){
+     pulling=false;refreshByPull();return true;
+    }
+    if(e.getActionMasked()==android.view.MotionEvent.ACTION_CANCEL){pulling=false;return true;}
+    return true;
+   }
+   return super.onTouchEvent(e);
+  }
+ };scroll.setFillViewport(true);layout.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));LinearLayout content=new LinearLayout(this);content.setOrientation(1);content.setPadding(dp(15),0,dp(15),dp(14));scroll.addView(content);
  android.widget.FrameLayout hero=new android.widget.FrameLayout(this);hero.setBackgroundColor(0xff19191f);content.addView(hero,new LinearLayout.LayoutParams(-1,dp(390)));
  ImageView heroImage=new ImageView(this);heroImage.setScaleType(ImageView.ScaleType.CENTER_CROP);hero.addView(heroImage,new android.widget.FrameLayout.LayoutParams(-1,-1));
  View overlay=new View(this);overlay.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0x120b0b0e,0x770b0b0e,0xff0b0b0e}));hero.addView(overlay,new android.widget.FrameLayout.LayoutParams(-1,-1));
@@ -54,7 +73,7 @@ public class MainActivity extends Activity {
   previousButton=actionText("‹ ANTERIOR",false);pager.addView(previousButton,new LinearLayout.LayoutParams(0,dp(52),1));
   pageLabel=navText("Página 1",12);pageLabel.setGravity(Gravity.CENTER);pager.addView(pageLabel,new LinearLayout.LayoutParams(dp(85),dp(52)));
   pager.addView(moreButton,new LinearLayout.LayoutParams(0,dp(52),1));
-  previousButton.setOnClickListener(v->openPage(currentPage-1));moreButton.setOnClickListener(v->openPage(currentPage+1));setContentView(layout);
+  previousButton.setOnClickListener(v->openPage(currentPage-1));moreButton.setOnClickListener(v->{if(pageLoadFailed){pageLoadFailed=false;loadNextPage();}else openPage(currentPage+1);});setContentView(layout);
  LinearLayout bottom=new LinearLayout(this);bottom.setGravity(Gravity.CENTER);bottom.setBackgroundColor(0xff15151b);layout.addView(bottom,new LinearLayout.LayoutParams(-1,dp(62)));
  String[] tabs={"⌂\nInício","▶\nFilmes","▣\nSéries","▤\nTV","◉\nPerfil"};for(int t=0;t<tabs.length;t++){final int idx=t;TextView tab=navText(tabs[t],12);tab.setGravity(Gravity.CENTER);tab.setTextColor(idx==0?0xfff04458:0xffb6b6c0);bottom.addView(tab,new LinearLayout.LayoutParams(0,-1,1));tab.setOnClickListener(v->{if(idx==4){startActivity(new Intent(this,ProfileActivity.class));}else chooseCategory(idx==0?"Todos":idx==1?"Filmes":idx==2?"Séries":"TV / IPTV");});}
  adapter=new BaseAdapter(){public int getCount(){return shown.size();}public Object getItem(int p){return shown.get(p);}public long getItemId(int p){return p;}
@@ -196,7 +215,12 @@ public class MainActivity extends Activity {
  }
  TextView navText(String value,int size){TextView v=new TextView(this);v.setText(value);v.setTextColor(Color.WHITE);v.setTextSize(size);v.setGravity(Gravity.CENTER_VERTICAL);return v;}
  TextView actionText(String value,boolean primary){TextView v=navText(value,14);v.setGravity(Gravity.CENTER);v.setTypeface(null,1);v.setTextColor(Color.WHITE);android.graphics.drawable.GradientDrawable bg=new android.graphics.drawable.GradientDrawable();bg.setColor(primary?0xffe6384b:0xff34343d);bg.setCornerRadius(dp(12));v.setBackground(bg);return v;}
- void chooseCategory(String q){channelGroup="";mode=q;selected="Todas";if(categories!=null&&categories.getSelectedItemPosition()!=0)categories.setSelection(0);resetFeed();}
+ void chooseCategory(String q){
+  channelGroup="";mode=q;selected="Todas";
+  if(search!=null && search.length()>0){search.setText("");return;}
+  if(categories!=null&&categories.getSelectedItemPosition()!=0){categories.setSelection(0);return;}
+  resetFeed();
+ }
  // Persistent SQLite cache: check at most once per 24h, never redownload on every open.
  final java.util.concurrent.atomic.AtomicBoolean cloudBusy=new java.util.concurrent.atomic.AtomicBoolean(false);
  static final long CLOUD_INTERVAL_MS=24L*60*60*1000;
@@ -315,15 +339,15 @@ public class MainActivity extends Activity {
     item.setOnClickListener(v->AdultProtection.require(MainActivity.this,AdultProtection.adult(group),()->{
      drawer.dismiss();channelGroup=group;mode="Todos";selected="Todas";
      if(categories!=null&&categories.getSelectedItemPosition()!=0)categories.setSelection(0);
-     if(search!=null)search.setText("");resetFeed();
+     if(search!=null&&search.length()>0){search.setText("");}else resetFeed();
     }));
    }
    if(index[0]<names.size())handler.postDelayed(this,12);
   }};
   handler.post(batch);
  }
-  void resetFeed(){if(search==null||grid==null||adapter==null)return;requestVersion++;currentPage=0;pageOffset=0;endReached=false;loadingPage=false;bundledPaging=false;localPages.clear();shown.clear();adapter.notifyDataSetChanged();updateGridHeight();loadNextPage();}
-  void openPage(int target){if(loadingPage||target<0||(target>currentPage&&endReached))return;currentPage=target;requestVersion++;pageOffset=target*PAGE_SIZE;endReached=false;localPages.clear();shown.clear();adapter.notifyDataSetChanged();updateGridHeight();loadNextPage();}
+  void resetFeed(){if(search==null||grid==null||adapter==null)return;pageLoadFailed=false;requestVersion++;currentPage=0;pageOffset=0;endReached=false;loadingPage=false;bundledPaging=false;localPages.clear();shown.clear();adapter.notifyDataSetChanged();updateGridHeight();loadNextPage();}
+  void openPage(int target){if(loadingPage||target<0||(target>currentPage&&endReached))return;pageLoadFailed=false;currentPage=target;requestVersion++;pageOffset=target*PAGE_SIZE;endReached=false;localPages.clear();shown.clear();adapter.notifyDataSetChanged();updateGridHeight();loadNextPage();}
  boolean matches(JSONObject o,String query){String name=o.optString("nome","");String cat=o.optString("categoria","");String c=cat.toLowerCase(java.util.Locale.ROOT);String n=name.toLowerCase(java.util.Locale.ROOT);if(!n.contains(query))return false;if(!selected.equals("Todas")&&!selected.equals(cat))return false;boolean tv=c.contains("iptv")||c.contains("canal")||c.contains("tv ao vivo")||c.equals("tv")||c.contains("televis");boolean series=SeriesHelper.isSeries(o);if(mode.equals("TV / IPTV"))return tv;if(mode.equals("Séries"))return series&&!tv;if(mode.equals("Filmes"))return !tv&&!series&&(c.contains("filme")||c.contains("movie")||c.contains("cinema"));return true;}
   // Cache persistente por pasta, filtro, busca e pagina (nao e apagado ao fechar o app).
   java.io.File pageCacheFile(String group,String q,String modeName,String category,int offset){
@@ -369,13 +393,13 @@ public class MainActivity extends Activity {
    });
   }
   void loadNextPage(){
-   if(loadingPage||pool.isShutdown())return;
+   if(loadingPage||catalogQueries.isShutdown())return;
    loadingPage=true;final int version=requestVersion,offset=pageOffset;
    final String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim(),m=mode,cat=selected,groupFilter=channelGroup;
-   moreButton.setVisibility(View.VISIBLE);moreButton.setText("CARREGANDO...");
+   moreButton.setVisibility(View.VISIBLE);moreButton.setText("CARREGANDO...");status.setText("Carregando "+(groupFilter.isEmpty()?m:groupFilter)+" • página "+(currentPage+1)+" (até 100 títulos)...");
    if(previousButton!=null)previousButton.setVisibility(currentPage>0?View.VISIBLE:View.INVISIBLE);
    if(pageLabel!=null)pageLabel.setText("Página "+(currentPage+1));
-   pool.execute(()->{
+   catalogQueries.execute(()->{
     try{
      java.io.File file=pageCacheFile(groupFilter,q,m,cat,offset);
      JSONObject saved=readSavedPage(file);
@@ -397,14 +421,14 @@ public class MainActivity extends Activity {
      final ArrayList<JSONObject> result=page;
      runOnUiThread(()->{if(version!=requestVersion)return;
       localPages.clear();localPages.addAll(result);pageOffset=offset;
-      endReached=!next;loadingPage=false;filter();
+      endReached=!next;loadingPage=false;pageLoadFailed=false;filter();
       moreButton.setVisibility(next?View.VISIBLE:View.INVISIBLE);
       moreButton.setText("PRÓXIMA ›");
       if(previousButton!=null)previousButton.setVisibility(currentPage>0?View.VISIBLE:View.INVISIBLE);
       if(pageLabel!=null)pageLabel.setText("Página "+(currentPage+1));
       if(grid!=null)grid.setSelection(0);
      });
-    }catch(Exception ex){runOnUiThread(()->{if(version==requestVersion){loadingPage=false;status.setText("Erro: "+ex.getMessage());moreButton.setVisibility(View.VISIBLE);moreButton.setText("TENTAR NOVAMENTE");}});}
+    }catch(Exception ex){runOnUiThread(()->{if(version==requestVersion){loadingPage=false;pageLoadFailed=true;status.setText("Não foi possível carregar. Toque em TENTAR NOVAMENTE.");moreButton.setVisibility(View.VISIBLE);moreButton.setText("TENTAR NOVAMENTE");}});}
    });
   }
  void loadSeriesPage(){
@@ -431,12 +455,23 @@ public class MainActivity extends Activity {
    });
   });
  }
+ void refreshByPull(){
+  if(status!=null)status.setText("Atualizando catálogo...");
+  if(continueSectionView!=null)refreshContinueCards(continueSectionView,continueCardsView);
+  // Consulta novamente o banco local e verifica se há revisão nova no Firebase.
+  resetFeed();
+  if(FirebaseCatalogSync.configured(this)){
+   getSharedPreferences("reel_cloud_cache_v194",MODE_PRIVATE).edit().remove("last_check").apply();
+   loadCloud();
+  }
+  Toast.makeText(this,"Atualizando catálogo...",Toast.LENGTH_SHORT).show();
+ }
  void refreshLocal(){resetFeed();}
- void filter(){if(adapter==null)return;String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim();shown.clear();java.util.HashSet<String> ids=new java.util.HashSet<>(),grouped=new java.util.HashSet<>();ArrayList<JSONObject> combined=new ArrayList<>(localPages);if(combined.isEmpty() && pageOffset==0 && localCatalogCount==0){int added=0;for(JSONObject fallback:all){if(matches(fallback,q)){combined.add(fallback);if(++added>=60)break;}}}for(JSONObject o:combined){if(!matches(o,q))continue;String id=o.optString("id","");if(!id.isEmpty()&&!ids.add(id))continue;if(SeriesHelper.isSeries(o)){String k=SeriesHelper.key(o);if(!grouped.add(k))continue;}shown.add(o);}status.setText("Página "+(currentPage+1)+" • "+shown.size()+" títulos • "+localCatalogCount+" salvos no celular");adapter.notifyDataSetChanged();updateGridHeight();}
+ void filter(){if(adapter==null)return;String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim();shown.clear();java.util.HashSet<String> ids=new java.util.HashSet<>(),grouped=new java.util.HashSet<>();ArrayList<JSONObject> combined=new ArrayList<>(localPages);if(combined.isEmpty() && pageOffset==0 && localCatalogCount==0){int added=0;for(JSONObject fallback:all){if(matches(fallback,q)){combined.add(fallback);if(++added>=60)break;}}}for(JSONObject o:combined){if(channelGroup.isEmpty()&&!matches(o,q))continue;String id=o.optString("id","");if(!id.isEmpty()&&!ids.add(id))continue;if(SeriesHelper.isSeries(o)){String k=SeriesHelper.key(o);if(!grouped.add(k))continue;}shown.add(o);}status.setText("Página "+(currentPage+1)+" • "+shown.size()+" títulos • "+localCatalogCount+" salvos no celular");adapter.notifyDataSetChanged();updateGridHeight();}
  void updateGridHeight(){
   if(grid==null)return;
-  int rows=Math.max(1,(shown.size()+2)/3);
-  int height=dp(10)+rows*dp(215)+Math.max(0,rows-1)*dp(12)+dp(12);
+  // Recicla os cartoes dentro da grade em vez de criar 100 views ao mesmo tempo.
+  int height=dp(530);
   android.view.ViewGroup.LayoutParams params=grid.getLayoutParams();
   if(params!=null&&params.height!=height){params.height=height;grid.setLayoutParams(params);}
  }
@@ -444,5 +479,5 @@ public class MainActivity extends Activity {
  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(search!=null){String wanted=intent.getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){intent.removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}}}
  void details(JSONObject o){AdultProtection.require(this,AdultProtection.adult(o),()->{Intent i=new Intent(this,DetailsActivity.class);i.putExtra("item",o.toString());startActivity(i);});}
  void loadCover(String url,ImageView image){if(url.equals(image.getTag()) && image.getDrawable()!=null)return;image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag()))image.setImageBitmap(bitmap);});}}catch(Exception ignored){}});}
- @Override protected void onDestroy(){if(heroTicker!=null)handler.removeCallbacks(heroTicker);if(heroBatchTicker!=null)handler.removeCallbacks(heroBatchTicker);pool.shutdownNow();super.onDestroy();}
+ @Override protected void onDestroy(){if(heroTicker!=null)handler.removeCallbacks(heroTicker);if(heroBatchTicker!=null)handler.removeCallbacks(heroBatchTicker);catalogQueries.shutdownNow();pool.shutdownNow();super.onDestroy();}
 }

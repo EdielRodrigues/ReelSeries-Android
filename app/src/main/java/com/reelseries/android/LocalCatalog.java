@@ -146,7 +146,8 @@ public class LocalCatalog extends SQLiteOpenHelper {
  }
  public ArrayList<JSONObject> feed(String query,String mode,String category,int offset,int limit){
   ArrayList<JSONObject> result=new ArrayList<>();String c="LOWER(COALESCE(categoria,''))", n="LOWER(COALESCE(nome,''))";
-  String tv="("+c+" LIKE '%iptv%' OR "+c+" LIKE '%canal%' OR "+c+" LIKE '%tv ao vivo%' OR "+c+"='tv' OR "+c+" LIKE '%televis%')";
+  String group="LOWER(COALESCE(grupo,''))";
+  String tv="("+c+" LIKE '%iptv%' OR "+c+" LIKE '%canal%' OR "+c+" LIKE '%tv ao vivo%' OR "+c+"='tv' OR "+c+" LIKE '%televis%' OR "+group+" LIKE '%iptv%')";
   String series="("+c+" LIKE '%serie%' OR "+c+" LIKE '%série%' OR "+c+" LIKE '%novela%' OR "+c+" LIKE '%episod%' OR "+n+" LIKE '%episodio%' OR "+n+" LIKE '%episódio%')";
   String where=" WHERE "+n+" LIKE ?";ArrayList<String> args=new ArrayList<>();args.add("%"+query.toLowerCase(Locale.ROOT)+"%");
   if(!"Todas".equals(category)){where+=" AND categoria=?";args.add(category);}
