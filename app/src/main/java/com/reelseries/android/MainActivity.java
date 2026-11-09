@@ -4,8 +4,8 @@ import android.app.*;import android.os.*;import android.content.*;import android
 
 public class MainActivity extends Activity {
  final ArrayList<JSONObject> all=new ArrayList<>(), shown=new ArrayList<>(); final java.util.HashMap<String,JSONObject> cloud=new java.util.HashMap<>();
- final ExecutorService pool=Executors.newFixedThreadPool(3); final android.util.LruCache<String,Bitmap> cache=new android.util.LruCache<String,Bitmap>(16);
- GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos", channelGroup=""; int pageOffset=0; boolean loadingPage=false, endReached=false, bundledPaging=false; TextView moreButton, previousButton, pageLabel; int currentPage=0; static final int PAGE_SIZE=300; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; int localCatalogCount=0; boolean catalogLoadedOnce=false; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
+ final ExecutorService pool=Executors.newFixedThreadPool(3); final android.util.LruCache<String,Bitmap> cache=new android.util.LruCache<String,Bitmap>(24);
+ GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos", channelGroup=""; int pageOffset=0; boolean loadingPage=false, endReached=false, bundledPaging=false; TextView moreButton, previousButton, pageLabel; int currentPage=0; static final int PAGE_SIZE=48; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; int localCatalogCount=0; boolean catalogLoadedOnce=false; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
  final ArrayList<JSONObject> heroItems=new ArrayList<>(); int heroIndex=0; boolean heroActive=false;
  LinearLayout continueSectionView,continueCardsView;
  Runnable heroTicker; android.widget.LinearLayout heroDots;
@@ -249,7 +249,7 @@ public class MainActivity extends Activity {
  // Painel lateral: início, perfil e grupos reais do catálogo IPTV local.
  private void showChannelSidebar(){
   final android.app.Dialog drawer=new android.app.Dialog(this);
-  LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);panel.setBackgroundColor(0xff171e2a);panel.setPadding(dp(16),dp(16),dp(12),dp(12));
+  LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);panel.setBackgroundColor(0xff15151b);panel.setPadding(dp(16),dp(18),dp(14),dp(12));
   TextView title=navText("REEL SÉRIES",19);title.setTypeface(null,1);title.setTextColor(0xffff5269);panel.addView(title);
   TextView home=navText("⌂  Início",17);home.setPadding(dp(10),dp(20),0,dp(18));panel.addView(home);home.setOnClickListener(v->{drawer.dismiss();channelGroup="";chooseCategory("Todos");});
   if(com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser()!=null){
@@ -258,20 +258,25 @@ public class MainActivity extends Activity {
    receive.setOnClickListener(v->{drawer.dismiss();forceCloudUpdate();});
   }
   TextView profile=navText("♙  Meu perfil",17);profile.setPadding(dp(10),dp(10),0,dp(20));panel.addView(profile);profile.setOnClickListener(v->{drawer.dismiss();startActivity(new Intent(this,ProfileActivity.class));});
-  TextView groupsTitle=navText("CATÁLOGO POR PASTAS",12);groupsTitle.setTextColor(0xffff5269);groupsTitle.setPadding(dp(10),dp(12),0,dp(10));panel.addView(groupsTitle);
+  TextView groupsTitle=navText("EXPLORAR PASTAS",13);groupsTitle.setTypeface(null,1);groupsTitle.setTextColor(0xffef4356);groupsTitle.setPadding(dp(10),dp(12),0,dp(10));panel.addView(groupsTitle);
+  EditText folderSearch=new EditText(this);folderSearch.setSingleLine(true);folderSearch.setHint("Buscar pasta...");folderSearch.setTextColor(Color.WHITE);folderSearch.setHintTextColor(0xff9d9da8);folderSearch.setTextSize(15);folderSearch.setPadding(dp(12),0,dp(12),0);folderSearch.setBackground(rounded(0xff272730,12));LinearLayout.LayoutParams fs=new LinearLayout.LayoutParams(-1,dp(46));fs.bottomMargin=dp(10);panel.addView(folderSearch,fs);
   ScrollView scroll=new ScrollView(this);panel.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
   LinearLayout list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);scroll.addView(list);
   TextView wait=navText("Carregando pastas pela primeira vez...",13);list.addView(wait);
+  final java.util.LinkedHashMap<String,Integer>[] folderData=new java.util.LinkedHashMap[]{null};
+  final Runnable[] refresh={null};
+  refresh[0]=()->{if(folderData[0]!=null&&drawer.isShowing())renderFolderItems(list,drawer,folderData[0],folderSearch.getText().toString());};
+  folderSearch.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int c,int a){}public void onTextChanged(CharSequence s,int st,int before,int count){handler.removeCallbacks(refresh[0]);handler.postDelayed(refresh[0],180);}public void afterTextChanged(Editable e){}});
   drawer.setContentView(panel);
-  android.view.Window win=drawer.getWindow();if(win!=null){win.setBackgroundDrawableResource(android.R.color.transparent);win.setGravity(Gravity.START|Gravity.TOP);win.setLayout(Math.min(dp(310),getResources().getDisplayMetrics().widthPixels*85/100),-1);win.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);android.view.WindowManager.LayoutParams a=win.getAttributes();a.dimAmount=0.45f;win.setAttributes(a);}
-  drawer.show();if(win!=null)win.setLayout(Math.min(dp(310),getResources().getDisplayMetrics().widthPixels*85/100),-1);
+  android.view.Window win=drawer.getWindow();if(win!=null){win.setBackgroundDrawableResource(android.R.color.transparent);win.setGravity(Gravity.START|Gravity.TOP);win.setLayout(Math.min(dp(300),getResources().getDisplayMetrics().widthPixels*82/100),-1);win.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);android.view.WindowManager.LayoutParams a=win.getAttributes();a.dimAmount=0.45f;win.setAttributes(a);}
+  drawer.show();if(win!=null)win.setLayout(Math.min(dp(300),getResources().getDisplayMetrics().widthPixels*82/100),-1);
   android.content.SharedPreferences pref=getSharedPreferences("reel_folder_cache_v1",MODE_PRIVATE);
   String saved=pref.getString("folders","");
   if(!saved.isEmpty()){
    try{
     JSONObject json=new JSONObject(saved);java.util.LinkedHashMap<String,Integer> counts=new java.util.LinkedHashMap<>();
     java.util.Iterator<String> keys=json.keys();while(keys.hasNext()){String key=keys.next();counts.put(key,json.optInt(key));}
-    renderFolderItems(list,drawer,counts);return;
+    folderData[0]=counts;renderFolderItems(list,drawer,counts,"");return;
    }catch(Exception ignored){}
   }
   pool.execute(()->{
@@ -282,18 +287,40 @@ public class MainActivity extends Activity {
     JSONObject json=new JSONObject();try{for(java.util.Map.Entry<String,Integer> entry:counts.entrySet())json.put(entry.getKey(),entry.getValue());}catch(Exception ignored){}
     pref.edit().putString("folders",json.toString()).apply();
    }
-   runOnUiThread(()->{if(drawer.isShowing())renderFolderItems(list,drawer,counts);});
+   runOnUiThread(()->{if(drawer.isShowing()){folderData[0]=counts;renderFolderItems(list,drawer,counts,folderSearch.getText().toString());}});
   });
  }
- private void renderFolderItems(LinearLayout list,android.app.Dialog drawer,java.util.LinkedHashMap<String,Integer> counts){
+ private int folderRenderVersion=0;
+ private void renderFolderItems(LinearLayout list,android.app.Dialog drawer,java.util.LinkedHashMap<String,Integer> counts,String query){
+  final int version=++folderRenderVersion;
   list.removeAllViews();
   if(counts.isEmpty()){list.addView(navText("Aguardando catálogo do Firebase",13));return;}
-  java.util.ArrayList<String> names=new java.util.ArrayList<>(counts.keySet());java.util.Collections.sort(names,String.CASE_INSENSITIVE_ORDER);
-  for(String group:names){
-   TextView item=navText("▱  "+group+"    ("+counts.get(group)+")",15);
-   item.setPadding(dp(10),dp(12),dp(6),dp(12));list.addView(item);
-   item.setOnClickListener(v->AdultProtection.require(this,AdultProtection.adult(group),()->{drawer.dismiss();channelGroup=group;mode="Todos";selected="Todas";if(categories!=null&&categories.getSelectedItemPosition()!=0)categories.setSelection(0);if(search!=null)search.setText("");resetFeed();}));
-  }
+  String term=query==null?"":query.trim().toLowerCase(java.util.Locale.ROOT);
+  java.util.ArrayList<String> names=new java.util.ArrayList<>();
+  for(String name:counts.keySet())if(name.toLowerCase(java.util.Locale.ROOT).contains(term))names.add(name);
+  java.util.Collections.sort(names,String.CASE_INSENSITIVE_ORDER);
+  if(names.isEmpty()){TextView empty=navText("Nenhuma pasta encontrada",14);empty.setPadding(dp(10),dp(20),0,0);list.addView(empty);return;}
+  // Constrói a lista em blocos pequenos, sem congelar a thread de interface.
+  final int[] index={0};
+  Runnable batch=new Runnable(){public void run(){
+   if(version!=folderRenderVersion||!drawer.isShowing())return;
+   int end=Math.min(index[0]+18,names.size());
+   for(;index[0]<end;index[0]++){
+    final String group=names.get(index[0]);
+    TextView item=navText("▱  "+group+"   ("+counts.get(group)+")",14);
+    item.setSingleLine(true);item.setEllipsize(android.text.TextUtils.TruncateAt.END);
+    item.setPadding(dp(12),dp(12),dp(8),dp(12));
+    item.setBackground(rounded(index[0]%2==0?0xff202027:0xff191920,8));
+    LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(48));lp.bottomMargin=dp(5);list.addView(item,lp);
+    item.setOnClickListener(v->AdultProtection.require(MainActivity.this,AdultProtection.adult(group),()->{
+     drawer.dismiss();channelGroup=group;mode="Todos";selected="Todas";
+     if(categories!=null&&categories.getSelectedItemPosition()!=0)categories.setSelection(0);
+     if(search!=null)search.setText("");resetFeed();
+    }));
+   }
+   if(index[0]<names.size())handler.postDelayed(this,12);
+  }};
+  handler.post(batch);
  }
   void resetFeed(){if(search==null||grid==null||adapter==null)return;requestVersion++;currentPage=0;pageOffset=0;endReached=false;loadingPage=false;bundledPaging=false;localPages.clear();shown.clear();adapter.notifyDataSetChanged();updateGridHeight();loadNextPage();}
   void openPage(int target){if(loadingPage||target<0||(target>currentPage&&endReached))return;currentPage=target;requestVersion++;pageOffset=target*PAGE_SIZE;endReached=false;localPages.clear();shown.clear();adapter.notifyDataSetChanged();updateGridHeight();loadNextPage();}
