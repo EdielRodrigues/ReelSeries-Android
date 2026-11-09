@@ -18,7 +18,7 @@ public final class AccessGuard implements Application.ActivityLifecycleCallbacks
  private Dialog gate;
  private String uid="";
  private ListenerRegistration registration;
- private boolean admin=false, adminKnown=false, profileKnown=false, blocked=false;
+ private boolean admin=false, adminKnown=false, profileKnown=false, blocked=false, vipEnabled=false;
  private String reason="";
  private long expiry=0;
  private String warnedKey="";
@@ -32,7 +32,7 @@ public final class AccessGuard implements Application.ActivityLifecycleCallbacks
   String next=user==null?"":user.getUid();
   if(next.equals(uid))return;
   if(registration!=null){registration.remove();registration=null;}
-  uid=next;admin=false;adminKnown=false;profileKnown=false;blocked=false;expiry=0;reason="";
+  uid=next;admin=false;adminKnown=false;profileKnown=false;blocked=false;vipEnabled=false;expiry=0;reason="";
   dismiss();
   if(next.isEmpty()){if(current!=null)render(current);return;}
   FirebaseFirestore fs=FirebaseFirestore.getInstance();
@@ -49,6 +49,7 @@ public final class AccessGuard implements Application.ActivityLifecycleCallbacks
    if(doc==null){profileKnown=false;if(current!=null)render(current);return;}
    profileKnown=true;
    blocked=doc.exists()&&Boolean.TRUE.equals(doc.getBoolean("bloqueado"));
+   vipEnabled=doc.exists()&&Boolean.TRUE.equals(doc.getBoolean("vipAtivo"));
    com.google.firebase.Timestamp until=doc.exists()?doc.getTimestamp("vipAte"):null;
    expiry=until==null?0:until.toDate().getTime();
    if(current!=null)render(current);
@@ -61,10 +62,11 @@ public final class AccessGuard implements Application.ActivityLifecycleCallbacks
   if(!u.getUid().equals(uid)){connect(u);return;}
   // Never expose content while authorization is being checked.
   boolean pending=!adminKnown||(!admin&&!profileKnown);
-  boolean expired=expiry>0&&System.currentTimeMillis()>=expiry;
+  // Access requires an active subscription with an explicit future expiry.
+  boolean expired=!vipEnabled||expiry<=0||System.currentTimeMillis()>=expiry;
   if(admin){dismiss();return;}
   if(pending||blocked||expired){
-   reason=pending?"Verificando acesso...":blocked?"Sua conta foi bloqueada pela administração.":"Sua assinatura venceu. Solicite a renovação ao administrador.";
+   reason=pending?"Verificando acesso...":blocked?"Sua conta foi bloqueada pela administração.":"Sua assinatura está vencida ou sem validade ativa. Solicite a renovação ao administrador.";
    showGate(a,pending);
   }else{
    dismiss();
