@@ -76,6 +76,7 @@ public class AdminActivity extends Activity {
   }
   tileRow(tile("▤",java.text.NumberFormat.getIntegerInstance(new java.util.Locale("pt","BR")).format(catalog.count()),"Registros locais",()->browseTitles(0)),tile("☷","M3U / M3U8","Importação",()->urlDialog(false)));
   tileRow(tile("▣","Catálogo","Gerenciamento",this::manageTitles),tile("⚙","Sistema","Configurações",this::settingsPanel));
+  section("Usuários e permissões");button("👥  Administração de perfis • bloquear / desbloquear",this::manageUsers);button("🛡  Contas administrativas",this::manageAdmins);button("＋  Criar cliente",this::createCustomer);
   section("Catálogo online");button("☁  Enviar catálogo completo ao Firebase",()->syncAll());button("↓  Receber atualizações do Firebase",this::downloadCloud);button("☁  Ver configuração do Firebase",()->msg(FirebaseCatalogSync.configured(this)?"Firebase configurado • sincronização disponível":"Configure firebase_catalog_url em res/values/firebase_catalog.xml"));
   section("Sincronização por catálogo");
   button("↓  Receber somente Séries + episódios",()->downloadCategory("catalogo_1_series"));
@@ -100,7 +101,177 @@ public class AdminActivity extends Activity {
   section("TMDB • capas e informações");button("✦  Configurar servidor TMDB",this::configureTmdbServer);button("✦  Verificar capas faltantes (simulação)",()->startTmdbSync(true));button("✦  Atualizar capas e metadados ausentes",()->startTmdbSync(false));
   section("Importação");button("↻  Atualizar playlist por URL",()->urlDialog(false));button("⇧  Importar arquivo JSON",()->pick(JSON));button("⇧  Importar arquivo M3U",()->pick(M3U));
   section("Diagnósticos");button("⚠  Títulos sem vídeo",()->diagnostic("sem_video",0));button("▧  Títulos sem capa",()->diagnostic("sem_capa",0));button("≡  Categorias vazias",()->diagnostic("sem_categoria",0));
+  section("Usuários e permissões");button("👥  Administração de perfis • bloquear / desbloquear",this::manageUsers);button("🛡  Contas administrativas",this::manageAdmins);button("＋  Criar cliente",this::createCustomer);
   section("Backup e segurança");button("⇩  Exportar backup JSON",this::exportCatalog);button("↻  Restaurar backup JSON e enviar ao Firebase",()->pick(JSON));button("▣  Escolher pasta do Firebase para excluir",()->browseFirebaseFolders(""));button("⚠  Excluir TODO o catálogo do Firebase e deste aparelho",this::confirmDeleteAll);button("♟  Permissões administrativas",()->new AlertDialog.Builder(this).setTitle("Acesso administrativo").setMessage("O acesso é validado no Firestore em admins/{uid}, com active=true e role=admin.").setPositiveButton("OK",null).show());button("↻  Atualizar painel",this::dashboard);button("Sair da conta",()->{auth.signOut();login();});button("←  Voltar",this::dashboard);button("←  Voltar ao Meu Perfil",()->finish());
+ }
+ private void manageUsers(){manageUsersPage(null);}
+ private void manageUsersPage(com.google.firebase.firestore.DocumentSnapshot cursor){
+  if(!authorized){login();return;}
+  screen("Administração de perfis");
+  msg("Contas cadastradas no aplicativo • 50 por página. Contas ADM são protegidas.");
+  button("＋ Criar novo cliente",this::createCustomer);
+  com.google.firebase.firestore.Query query=firestore.collection("usuarios")
+   .orderBy(com.google.firebase.firestore.FieldPath.documentId()).limit(50);
+  if(cursor!=null)query=query.startAfter(cursor);
+  query.get().addOnSuccessListener(result->{
+   if(isFinishing())return;
+   if(result.isEmpty()){button("Nenhum perfil encontrado",()->{});}
+   for(com.google.firebase.firestore.DocumentSnapshot doc:result.getDocuments()){
+    String uid=doc.getId(),email=doc.getString("email"),name=doc.getString("nome");
+    boolean blocked=Boolean.TRUE.equals(doc.getBoolean("bloqueado"));
+    String display=(name==null||name.isEmpty()?"Usuário":name)+" • "+(email==null?"Sem e-mail":email);
+    button((blocked?"🔴 BLOQUEADO  ":"🟢 ATIVO  ")+display,()->userDetail(uid,display,blocked));
+   }
+   if(result.size()==50)button("Próximos 50 perfis →",()->manageUsersPage(result.getDocuments().get(result.size()-1)));
+   button("↻ Atualizar perfis",this::manageUsers);
+   button("← Voltar ao ADM",this::dashboard);
+  }).addOnFailureListener(e->msg("Não foi possível listar os perfis: "+e.getMessage()));
+ }
+ private void manageAdmins(){
+  if(!authorized){login();return;}
+  screen("Contas administrativas");msg("Contas ADM são protegidas contra bloqueio.");
+  firestore.collection("admins").limit(100).get().addOnSuccessListener(result->{
+   if(isFinishing())return;
+   for(com.google.firebase.firestore.DocumentSnapshot d:result.getDocuments()){
+    String role=d.getString("role");
+    button("🛡 "+d.getId()+" • "+(role==null?"administrador":role)+
+     (Boolean.TRUE.equals(d.getBoolean("active"))?" • ativo":" • inativo"),
+     ()->new AlertDialog.Builder(this).setTitle("Conta administrativa protegida")
+      .setMessage("O bloqueio de administradores não é permitido por esta tela.").setPositiveButton("OK",null).show());
+   }
+   button("← Voltar ao ADM",this::dashboard);
+  }).addOnFailureListener(e->msg("Erro ao listar ADM: "+e.getMessage()));
+ }
+ private void userDetail(String uid,String display,boolean ignored){
+  if(!authorized)return;
+  firestore.collection("usuarios").document(uid).get().addOnSuccessListener(doc->{
+   if(!doc.exists()){msg("Perfil não encontrado.");return;}
+   boolean blocked=Boolean.TRUE.equals(doc.getBoolean("bloqueado"));
+   com.google.firebase.Timestamp expiry=doc.getTimestamp("vipAte");
+   screen("Gerenciar cliente");
+   msg(display+"\nID: "+uid+"\nAcesso: "+(blocked?"BLOQUEADO":"ATIVO")+
+    "\nAssinatura: "+(expiry==null?"sem vencimento":new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(expiry.toDate())));
+   button("📅 Renovar 30 dias",()->renewCustomer(uid,30));
+   button("📅 Renovar 60 dias",()->renewCustomer(uid,60));
+   button("📅 Renovar 90 dias",()->renewCustomer(uid,90));
+   button("📅 Renovar 180 dias",()->renewCustomer(uid,180));
+   button("📅 Renovar 365 dias (1 ano)",()->renewCustomer(uid,365));
+   button("↺ Resetar assinatura",()->resetSubscription(uid));
+   String email=doc.getString("email");
+   if(email!=null&&!email.isEmpty())button("✉ Enviar redefinição de senha",()->passwordReset(email));
+   button(blocked?"🔓 Desbloquear usuário":"🔒 Bloquear usuário",()->changeBlocked(uid,!blocked));
+   button("↻ Atualizar perfil",()->userDetail(uid,display,false));
+   button("← Voltar aos perfis",this::manageUsers);
+  }).addOnFailureListener(e->msg("Erro ao carregar perfil: "+e.getMessage()));
+ }
+ private void protectedCustomer(String uid,Runnable operation){
+  if(!authorized||auth.getCurrentUser()==null)return;
+  if(uid.equals(auth.getCurrentUser().getUid())){msg("Sua própria conta está protegida.");return;}
+  firestore.collection("admins").document(uid).get()
+   .addOnSuccessListener(doc->{if(doc.exists()){msg("Contas ADM não podem ser alteradas por esta tela.");return;}operation.run();})
+   .addOnFailureListener(e->msg("Não foi possível verificar proteção ADM: "+e.getMessage()));
+ }
+ private void changeBlocked(String uid,boolean blocked){
+  protectedCustomer(uid,()->new AlertDialog.Builder(this)
+   .setTitle(blocked?"Bloquear cliente?":"Desbloquear cliente?")
+   .setMessage("Confirma a alteração de acesso deste usuário?")
+   .setNegativeButton("Cancelar",null).setPositiveButton("Confirmar",(d,w)->{
+    java.util.Map<String,Object> updates=new java.util.HashMap<>();
+    updates.put("bloqueado",blocked);
+    updates.put("alteradoEm",com.google.firebase.firestore.FieldValue.serverTimestamp());
+    updates.put("alteradoPor",auth.getCurrentUser().getUid());
+    firestore.collection("usuarios").document(uid).update(updates)
+     .addOnSuccessListener(v->manageUsers())
+     .addOnFailureListener(e->msg("Erro ao alterar bloqueio: "+e.getMessage()));
+   }).show());
+ }
+ private void renewCustomer(String uid,int days){
+  protectedCustomer(uid,()->firestore.collection("usuarios").document(uid).get()
+   .addOnSuccessListener(doc->{
+    com.google.firebase.Timestamp previous=doc.getTimestamp("vipAte");
+    long now=System.currentTimeMillis();
+    long start=previous==null?now:Math.max(now,previous.toDate().getTime());
+    java.util.Calendar cal=java.util.Calendar.getInstance();
+    cal.setTimeInMillis(start);cal.add(java.util.Calendar.DAY_OF_YEAR,days);
+    java.util.Date until=cal.getTime();
+    String formatted=new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(until);
+    new AlertDialog.Builder(this).setTitle("Renovar "+days+" dias?")
+     .setMessage("Novo vencimento: "+formatted+"\nA renovação soma os dias ao vencimento atual, se ainda estiver ativo.")
+     .setNegativeButton("Cancelar",null).setPositiveButton("Confirmar",(d,w)->{
+      java.util.Map<String,Object> updates=new java.util.HashMap<>();
+      updates.put("vipAtivo",true);
+      updates.put("vipAte",new com.google.firebase.Timestamp(until));
+      updates.put("alteradoEm",com.google.firebase.firestore.FieldValue.serverTimestamp());
+      updates.put("alteradoPor",auth.getCurrentUser().getUid());
+      firestore.collection("usuarios").document(uid).update(updates)
+       .addOnSuccessListener(v->{msg("Assinatura renovada até "+formatted);manageUsers();})
+       .addOnFailureListener(e->msg("Falha na renovação: "+e.getMessage()));
+     }).show();
+   }).addOnFailureListener(e->msg("Falha ao consultar vencimento: "+e.getMessage())));
+ }
+ private void resetSubscription(String uid){
+  protectedCustomer(uid,()->new AlertDialog.Builder(this).setTitle("Resetar assinatura?")
+   .setMessage("Remove a validade VIP deste cliente. Não exclui a conta nem o histórico.")
+   .setNegativeButton("Cancelar",null).setPositiveButton("Resetar",(d,w)->{
+    java.util.Map<String,Object> changes=new java.util.HashMap<>();
+    changes.put("vipAtivo",false);
+    changes.put("vipAte",com.google.firebase.firestore.FieldValue.delete());
+    changes.put("alteradoEm",com.google.firebase.firestore.FieldValue.serverTimestamp());
+    changes.put("alteradoPor",auth.getCurrentUser().getUid());
+    firestore.collection("usuarios").document(uid).update(changes)
+     .addOnSuccessListener(v->{msg("Assinatura resetada.");manageUsers();})
+     .addOnFailureListener(e->msg("Erro ao resetar assinatura: "+e.getMessage()));
+   }).show());
+ }
+ private void passwordReset(String email){
+  new AlertDialog.Builder(this).setTitle("Redefinir senha")
+   .setMessage("Enviar um link de redefinição para "+email+"?")
+   .setNegativeButton("Cancelar",null).setPositiveButton("Enviar",(d,w)->{
+    auth.sendPasswordResetEmail(email)
+     .addOnSuccessListener(v->msg("Solicitação de redefinição enviada."))
+     .addOnFailureListener(e->msg("Falha ao enviar: "+e.getMessage()));
+   }).show();
+ }
+ private void createCustomer(){
+  if(!authorized)return;
+  LinearLayout layout=new LinearLayout(this);layout.setOrientation(1);
+  int pad=dp(18);layout.setPadding(pad,0,pad,0);
+  EditText name=new EditText(this);name.setHint("Nome do cliente");layout.addView(name);
+  EditText email=new EditText(this);email.setHint("E-mail do cliente");email.setSingleLine(true);
+  email.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);layout.addView(email);
+  EditText pass=new EditText(this);pass.setHint("Senha temporária (mínimo 6 caracteres)");
+  pass.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);layout.addView(pass);
+  AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Criar cliente")
+   .setMessage("A conta será criada sem desconectar o administrador.")
+   .setView(layout).setNegativeButton("Cancelar",null).setPositiveButton("Criar cliente",null).create();
+  dialog.setOnShowListener(d->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+   String n=name.getText().toString().trim(),mail=email.getText().toString().trim(),pwd=pass.getText().toString();
+   if(n.isEmpty()){name.setError("Informe o nome.");return;}
+   if(!android.util.Patterns.EMAIL_ADDRESS.matcher(mail).matches()){email.setError("E-mail inválido.");return;}
+   if(pwd.length()<6){pass.setError("Use pelo menos 6 caracteres.");return;}
+   dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+   try{
+    com.google.firebase.FirebaseApp secondary;
+    try{secondary=com.google.firebase.FirebaseApp.getInstance("reel_customer_creation");}
+    catch(IllegalStateException e){
+     secondary=com.google.firebase.FirebaseApp.initializeApp(getApplicationContext(),
+      com.google.firebase.FirebaseApp.getInstance().getOptions(),"reel_customer_creation");
+    }
+    com.google.firebase.auth.FirebaseAuth secondaryAuth=com.google.firebase.auth.FirebaseAuth.getInstance(secondary);
+    secondaryAuth.createUserWithEmailAndPassword(mail,pwd).addOnSuccessListener(result->{
+     String uid=result.getUser().getUid();secondaryAuth.signOut();
+     java.util.Map<String,Object> profile=new java.util.HashMap<>();
+     profile.put("uid",uid);profile.put("nome",n);profile.put("email",mail);
+     profile.put("vipAtivo",false);profile.put("bloqueado",false);
+     profile.put("criadoEm",com.google.firebase.firestore.FieldValue.serverTimestamp());
+     firestore.collection("usuarios").document(uid).set(profile)
+      .addOnSuccessListener(x->{dialog.dismiss();msg("Cliente criado: "+mail);manageUsers();})
+      .addOnFailureListener(e->{dialog.dismiss();msg("Conta criada no Authentication, mas perfil não salvo: "+e.getMessage());});
+    }).addOnFailureListener(e->{dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+     msg("Não foi possível criar cliente: "+e.getMessage());});
+   }catch(Exception e){dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);msg("Erro ao criar cliente: "+e.getMessage());}
+  }));
+  dialog.show();
  }
  private void configureTmdbServer(){
   EditText f=new EditText(this);f.setSingleLine(true);f.setHint("https://seu-servico.onrender.com");f.setText(getPreferences(MODE_PRIVATE).getString("tmdb_server",""));
