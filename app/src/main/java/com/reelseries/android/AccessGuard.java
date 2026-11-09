@@ -58,7 +58,16 @@ public final class AccessGuard implements Application.ActivityLifecycleCallbacks
  private void render(Activity a){
   if(a.isFinishing()||a.isDestroyed())return;
   FirebaseUser u=FirebaseAuth.getInstance().getCurrentUser();
-  if(u==null){dismiss();return;}
+  if(u==null){
+   // No anonymous access to the catalog, player or administration.
+   if(!(a instanceof ProfileActivity)){
+    Intent login=new Intent(a,ProfileActivity.class);
+    login.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK);
+    a.startActivity(login);
+    a.finish();
+   }
+   return;
+  }
   if(!u.getUid().equals(uid)){connect(u);return;}
   // Never expose content while authorization is being checked.
   boolean pending=!adminKnown||(!admin&&!profileKnown);

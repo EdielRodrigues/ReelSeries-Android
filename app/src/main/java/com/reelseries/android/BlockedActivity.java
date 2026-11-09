@@ -12,7 +12,7 @@ public class BlockedActivity extends Activity {
   Button retry=new Button(this);retry.setText("Verificar novamente");panel.addView(retry,new LinearLayout.LayoutParams(-1,dp(54)));
   retry.setOnClickListener(v->{com.google.firebase.auth.FirebaseUser u=com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();if(u!=null){status.setText("Verificando acesso...");com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("usuarios").document(u.getUid()).get().addOnFailureListener(e->status.setText("Não foi possível verificar. Tente novamente."));}});
   signout=new Button(this);signout.setText("Sair da conta");LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,dp(54));sp.topMargin=dp(10);panel.addView(signout,sp);
-  signout.setOnClickListener(v->{com.google.firebase.auth.FirebaseAuth.getInstance().signOut();unlocking=true;startActivity(new Intent(this,ProfileActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));finish();});
+  signout.setOnClickListener(v->{unlocking=true;finishAffinity();com.google.firebase.auth.FirebaseAuth.getInstance().signOut();});
   whatsapp=new Button(this);whatsapp.setText("✆  RENOVAR PELO WHATSAPP");whatsapp.setAllCaps(false);whatsapp.setTextColor(Color.WHITE);whatsapp.setTextSize(17);
   GradientDrawable green=new GradientDrawable();green.setColor(0xff128c4a);green.setCornerRadius(dp(20));whatsapp.setBackground(green);
   LinearLayout.LayoutParams wp=new LinearLayout.LayoutParams(-1,dp(58));wp.topMargin=dp(18);panel.addView(whatsapp,wp);
