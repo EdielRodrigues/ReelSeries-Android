@@ -4,7 +4,7 @@ import android.app.*;import android.os.*;import android.content.*;import android
 
 public class MainActivity extends Activity {
  final ArrayList<JSONObject> all=new ArrayList<>(), shown=new ArrayList<>(); final java.util.HashMap<String,JSONObject> cloud=new java.util.HashMap<>();
- final ExecutorService pool=Executors.newFixedThreadPool(3); final java.util.concurrent.ExecutorService catalogQueries=Executors.newSingleThreadExecutor(); final android.util.LruCache<String,Bitmap> cache=new android.util.LruCache<String,Bitmap>(24);
+ final ExecutorService pool=Executors.newFixedThreadPool(3); final java.util.concurrent.ExecutorService catalogQueries=Executors.newFixedThreadPool(2); final android.util.LruCache<String,Bitmap> cache=new android.util.LruCache<String,Bitmap>(24);
  GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos", channelGroup=""; int pageOffset=0; boolean loadingPage=false, endReached=false, bundledPaging=false; TextView moreButton, previousButton, pageLabel; int currentPage=0; static final int PAGE_SIZE=100; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; int localCatalogCount=0; boolean catalogLoadedOnce=false; boolean pageLoadFailed=false; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
  final ArrayList<JSONObject> heroItems=new ArrayList<>(); int heroIndex=0; boolean heroActive=false;
  LinearLayout continueSectionView,continueCardsView;
@@ -399,6 +399,14 @@ public class MainActivity extends Activity {
    moreButton.setVisibility(View.VISIBLE);moreButton.setText("CARREGANDO...");status.setText("Carregando "+(groupFilter.isEmpty()?m:groupFilter)+" • página "+(currentPage+1)+" (até 100 títulos)...");
    if(previousButton!=null)previousButton.setVisibility(currentPage>0?View.VISIBLE:View.INVISIBLE);
    if(pageLabel!=null)pageLabel.setText("Página "+(currentPage+1));
+   // Se uma consulta antiga ficar presa, a tela nao fica bloqueada para sempre.
+   handler.postDelayed(()->{
+    if(version==requestVersion&&loadingPage){
+     loadingPage=false;pageLoadFailed=true;
+     status.setText("O catálogo demorou para responder. Toque em TENTAR NOVAMENTE.");
+     moreButton.setVisibility(View.VISIBLE);moreButton.setText("TENTAR NOVAMENTE");
+    }
+   },15000);
    catalogQueries.execute(()->{
     try{
      java.io.File file=pageCacheFile(groupFilter,q,m,cat,offset);
@@ -419,7 +427,7 @@ public class MainActivity extends Activity {
      }
      final boolean next=hasNext;
      final ArrayList<JSONObject> result=page;
-     runOnUiThread(()->{if(version!=requestVersion)return;
+     runOnUiThread(()->{if(version!=requestVersion||pageLoadFailed)return;
       localPages.clear();localPages.addAll(result);pageOffset=offset;
       endReached=!next;loadingPage=false;pageLoadFailed=false;filter();
       moreButton.setVisibility(next?View.VISIBLE:View.INVISIBLE);
@@ -475,7 +483,7 @@ public class MainActivity extends Activity {
   android.view.ViewGroup.LayoutParams params=grid.getLayoutParams();
   if(params!=null&&params.height!=height){params.height=height;grid.setLayoutParams(params);}
  }
- @Override protected void onResume(){super.onResume();if(continueSectionView!=null)refreshContinueCards(continueSectionView,continueCardsView);heroActive=true;if(heroBatchTicker!=null){handler.removeCallbacks(heroBatchTicker);handler.post(heroBatchTicker);}if(heroTicker!=null){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,HERO_SLIDE_MS);}if(search!=null){String wanted=getIntent().getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){getIntent().removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}if(!catalogLoadedOnce)resetFeed();if(FirebaseCatalogSync.configured(this))loadCloud();}}
+ @Override protected void onResume(){super.onResume();if(continueSectionView!=null)refreshContinueCards(continueSectionView,continueCardsView);heroActive=true;if(heroBatchTicker!=null){handler.removeCallbacks(heroBatchTicker);handler.post(heroBatchTicker);}if(heroTicker!=null){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,HERO_SLIDE_MS);}if(search!=null){String wanted=getIntent().getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){getIntent().removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}if(!catalogLoadedOnce&&!loadingPage)resetFeed();if(FirebaseCatalogSync.configured(this))loadCloud();}}
  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(search!=null){String wanted=intent.getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){intent.removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}}}
  void details(JSONObject o){AdultProtection.require(this,AdultProtection.adult(o),()->{Intent i=new Intent(this,DetailsActivity.class);i.putExtra("item",o.toString());startActivity(i);});}
  void loadCover(String url,ImageView image){if(url.equals(image.getTag()) && image.getDrawable()!=null)return;image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag()))image.setImageBitmap(bitmap);});}}catch(Exception ignored){}});}

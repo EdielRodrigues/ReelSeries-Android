@@ -117,19 +117,27 @@ public class LocalCatalog extends SQLiteOpenHelper {
   return new java.util.LinkedHashMap<>(counts);
  }
  public ArrayList<JSONObject> catalogFolderFeed(String folder,String query,int offset,int limit){
-  ArrayList<JSONObject> result=new ArrayList<>();int found=0;
-  String q=query==null?"":query.toLowerCase(java.util.Locale.ROOT);
-  try(Cursor c=getReadableDatabase().rawQuery("SELECT id,nome,categoria,capa,url,sinopse,grupo FROM media ORDER BY nome COLLATE NOCASE",null)){
-   while(c.moveToNext()){
-    String name=c.getString(1);
-    if(!folderFor(name,c.getString(2),c.getString(6)).equalsIgnoreCase(folder) ||
-       !name.toLowerCase(java.util.Locale.ROOT).contains(q))continue;
-    if(found++<offset)continue;
-    if(result.size()>=limit)break;
-    JSONObject o=new JSONObject();try{for(int i=0;i<6;i++)o.put(c.getColumnName(i),c.getString(i));result.add(o);}catch(Exception ignored){}
+  // Pastas normais usam o indice de categoria: nao percorrem 271 mil registros.
+  if(!folder.startsWith("TV • ")){
+   ArrayList<JSONObject> result=new ArrayList<>();
+   String where=folder.equals("Sem categoria")?"(categoria IS NULL OR categoria='')":"categoria=?";
+   String q=query==null?"":query.trim();
+   String sql="SELECT id,nome,categoria,capa,url,sinopse FROM media WHERE "+where+
+    (q.isEmpty()?"":" AND nome LIKE ?")+" ORDER BY nome LIMIT ? OFFSET ?";
+   ArrayList<String> args=new ArrayList<>();
+   if(!folder.equals("Sem categoria"))args.add(folder);
+   if(!q.isEmpty())args.add("%"+q+"%");
+   args.add(String.valueOf(limit));args.add(String.valueOf(offset));
+   try(Cursor c=getReadableDatabase().rawQuery(sql,args.toArray(new String[0]))){
+    while(c.moveToNext()){
+     JSONObject o=new JSONObject();
+     try{for(int i=0;i<6;i++)o.put(c.getColumnName(i),c.getString(i));result.add(o);}catch(Exception ignored){}
+    }
    }
+   return result;
   }
-  return result;
+  // Canais por emissora continuam filtrados por marca.
+  return channelGroupFeed(folder.substring(5).trim(),query,offset,limit);
  }
  public ArrayList<JSONObject> channelGroupFeed(String brand,String query,int offset,int limit){
   ArrayList<JSONObject> out=new ArrayList<>();int found=0;
@@ -154,7 +162,7 @@ public class LocalCatalog extends SQLiteOpenHelper {
   if("TV / IPTV".equals(mode))where+=" AND "+tv;
   else if("Séries".equals(mode))where+=" AND "+series+" AND NOT "+tv;
   else if("Filmes".equals(mode))where+=" AND NOT "+series+" AND NOT "+tv+" AND ("+c+" LIKE '%filme%' OR "+c+" LIKE '%movie%' OR "+c+" LIKE '%cinema%')";
-  String sql="SELECT id,nome,categoria,capa,url,sinopse FROM media"+where+" ORDER BY nome COLLATE NOCASE LIMIT ? OFFSET ?";
+  String sql="SELECT id,nome,categoria,capa,url,sinopse FROM media"+where+" ORDER BY nome LIMIT ? OFFSET ?";
   args.add(String.valueOf(Math.max(1,Math.min(limit,500))));args.add(String.valueOf(Math.max(0,offset)));
   try(Cursor cur=getReadableDatabase().rawQuery(sql,args.toArray(new String[0]))){while(cur.moveToNext()){JSONObject o=new JSONObject();try{for(int i=0;i<6;i++)o.put(cur.getColumnName(i),cur.getString(i));result.add(o);}catch(Exception ignored){}}}return result;
  }
