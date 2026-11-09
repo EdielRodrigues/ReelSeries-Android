@@ -566,7 +566,7 @@ public class AdminActivity extends Activity {
    msg("Esta pasta contém dados do sistema e não pode ser excluída.");return;
   }
   confirmAdminDeletion("Excluir pasta do Firebase?",
-   "Pasta: /"+path+"\nEsta exclusão é permanente. Faça backup antes.",()->{
+   "Pasta: /"+path+"\nEsta exclusão é permanente.",()->{
     busy=true;msg("Iniciando exclusão da pasta /"+path);
     FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{
      try{int count=FirebaseCatalogSync.deleteFolderBatched(this,path,token,n->msg("Excluindo "+path+": "+n+" registros..."));
@@ -579,7 +579,7 @@ public class AdminActivity extends Activity {
  private void confirmDeleteAll(){
   if(!authorized||busy)return;
   confirmAdminDeletion("Excluir TODO o catálogo?",
-   "Remove todos os títulos do Firebase e deste aparelho. Contas, administradores e configurações não serão apagados. Faça backup antes.",()->{
+   "Remove todos os títulos do Firebase e deste aparelho. Contas, administradores e configurações não serão apagados.",()->{
     busy=true;msg("Excluindo catálogo do Firebase...");
     FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{
      try{

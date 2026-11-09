@@ -83,7 +83,7 @@ public final class FirebaseCatalogSync {
  /** Lists direct child keys without downloading the full catalog. */
  public static java.util.ArrayList<String> listFolders(Context ctx,String path,String token)throws Exception{
   validatePath(path);
-  String node=path.isEmpty()?"/":"/"+path;
+  String node=path.isEmpty()?"/":"/"+encodedPath(path);
   // For the root this MUST be /.json, not .com.json.
   String address=base(ctx)+node+".json?shallow=true"+(token==null||token.isEmpty()?"":"&auth="+URLEncoder.encode(token,"UTF-8"));
   String body=request(address,"GET",null);
@@ -97,44 +97,53 @@ public final class FirebaseCatalogSync {
   if(path==null||path.contains("..")||path.contains("#")||path.contains("$")||path.contains("[")||path.contains("]")||path.contains("\\"))throw new IOException("Caminho Firebase inválido");
   if(!path.isEmpty())for(String segment:path.split("/",-1))if(segment.isEmpty()||segment.equals(".")||segment.equals(".."))throw new IOException("Caminho Firebase inválido");
  }
- /** Remove direct children in batches of 500, including their nested data.
-  * Never traverse each episode individually: doing so caused thousands of network calls.
-  * If Firebase rejects a batch because of its size, retry smaller batches. */
+ /** Delete large nodes recursively when Firebase rejects a single write. */
+ private static boolean oversized(IOException e){
+  String m=String.valueOf(e.getMessage()).toLowerCase(java.util.Locale.ROOT);
+  return m.contains("maximum size")||m.contains("too large")||m.contains("exceeds the maximum");
+ }
+ private static String encodedPath(String path)throws Exception{
+  StringBuilder out=new StringBuilder();
+  for(String segment:path.split("/")){
+   if(out.length()>0)out.append('/');
+   out.append(URLEncoder.encode(segment,"UTF-8").replace("+","%20"));
+  }
+  return out.toString();
+ }
+ private static void deleteNode(Context ctx,String path,String token,LocalCatalog.Progress progress,int[] removed,int depth)throws Exception{
+  if(depth>32)throw new IOException("Pasta muito profunda: "+path);
+  validatePath(path);
+  String address=base(ctx)+"/"+encodedPath(path)+".json?auth="+URLEncoder.encode(token,"UTF-8");
+  try{
+   request(address,"DELETE",null);removed[0]++;progress.update(removed[0]);return;
+  }catch(IOException ex){if(!oversized(ex))throw ex;}
+  // A node can be too large even if it has a single child. Descend to that child.
+  java.util.ArrayList<String> children=listFolders(ctx,path,token);
+  if(children.isEmpty())throw new IOException("Nó grande demais para apagar diretamente: "+path);
+  for(String child:children)deleteNode(ctx,path+"/"+child,token,progress,removed,depth+1);
+  request(address,"DELETE",null);
+ }
  public static int deleteFolderBatched(Context ctx,String path,String token,LocalCatalog.Progress progress)throws Exception{
   validatePath(path);
-  if(path.isEmpty()||path.equals("catalogo_unico")||path.equals("catalogo_unico/meta")||path.equals("__meta")||path.equals("admins")||path.equals("config"))throw new IOException("Pasta protegida; selecione uma subpasta");
-  int total=0;
-  // A shallow read returns child keys only, not the huge episode objects.
+  if(path.isEmpty()||path.equals("catalogo_unico")||path.equals("catalogo_unico/meta")||path.equals("__meta")||path.equals("admins")||path.equals("config"))
+   throw new IOException("Pasta protegida; selecione uma subpasta");
+  int[] removed={0};
+  // Never attempt a single huge root PATCH or DELETE.
   java.util.ArrayList<String> keys=listFolders(ctx,path,token);
   if(keys.isEmpty()){
-   request(base(ctx)+"/"+path+".json?auth="+URLEncoder.encode(token,"UTF-8"),"DELETE",null);
-   progress.update(1);return 1;
+   deleteNode(ctx,path,token,progress,removed,0);
+   return removed[0];
   }
-  for(int offset=0;offset<keys.size();offset+=500){
-   int end=Math.min(keys.size(),offset+500);
-   deleteLeafBatch(ctx,path,keys.subList(offset,end),token);
-   total+=end-offset;progress.update(total);
-  }
-  // Remove the now-empty parent node too.
-  request(base(ctx)+"/"+path+".json?auth="+URLEncoder.encode(token,"UTF-8"),"DELETE",null);
-  return total;
- }
- private static void deleteLeafBatch(Context ctx,String parent,java.util.List<String> keys,String token)throws Exception{
-  if(keys.isEmpty())return;
-  JSONObject patch=new JSONObject();for(String key:keys)patch.put(key,JSONObject.NULL);
-  try{
-   request(base(ctx)+"/"+parent+".json?auth="+URLEncoder.encode(token,"UTF-8"),"PATCH",patch.toString());
-  }catch(IOException e){
-   // RTDB can reject a large write even when the PATCH itself is small.
-   // Split it without losing the already completed batches.
-   if(keys.size()<=1)throw e;
-   int half=keys.size()/2;
-   deleteLeafBatch(ctx,parent,keys.subList(0,half),token);
-   deleteLeafBatch(ctx,parent,keys.subList(half,keys.size()),token);
-  }
+  for(String child:keys)deleteNode(ctx,path+"/"+child,token,progress,removed,0);
+  request(base(ctx)+"/"+encodedPath(path)+".json?auth="+URLEncoder.encode(token,"UTF-8"),"DELETE",null);
+  return removed[0];
  }
  public static void deleteAll(Context ctx,String token)throws Exception{
-  throw new IOException("Exclusão total desativada por segurança. Faça backup e migração antes de excluir catálogos.");
+  String[] catalogPaths={"catalogo_1_series/items","catalogo_2_filmes/items","catalogo_3_iptv/items","catalogo_unico/items"};
+  for(String path:catalogPaths){
+   deleteFolderBatched(ctx,path,token,n->{});
+  }
+  markChanged(ctx,token);
  }
  public static void deleteOne(Context ctx,String id,String token)throws Exception{
   request(endpoint(ctx,"items/"+URLEncoder.encode(id,"UTF-8"),token),"DELETE",null);
