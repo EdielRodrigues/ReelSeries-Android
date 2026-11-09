@@ -35,7 +35,7 @@ public class AdminActivity extends Activity {
  private EditText field(String hint){EditText e=new EditText(this);e.setHint(hint);e.setTextColor(-1);e.setHintTextColor(0xff99a5ba);e.setTextSize(15);e.setSingleLine(false);e.setPadding(dp(14),dp(12),dp(14),dp(12));e.setBackground(shape(0xff1b273a,12));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(10);root.addView(e,lp);return e;}
  private void button(String label,Runnable action){TextView b=new TextView(this);b.setText(label);b.setTextSize(15);b.setTypeface(null,1);b.setTextColor(Color.WHITE);b.setGravity(Gravity.CENTER_VERTICAL);b.setPadding(dp(17),dp(15),dp(12),dp(15));b.setMinHeight(dp(54));b.setBackground(shape(0xff202d42,13));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(9);root.addView(b,lp);b.setOnClickListener(v->action.run());}
  private void section(String title){TextView t=new TextView(this);t.setText(title.toUpperCase(java.util.Locale.ROOT));t.setTextSize(13);t.setTypeface(null,1);t.setTextColor(0xffff627a);t.setPadding(0,dp(23),0,dp(5));root.addView(t);}
- private void msg(String s){runOnUiThread(()->{if(!isFinishing()&&status!=null)status.setText(s);});}
+ private void msg(String s){runOnUiThread(()->{if(!isFinishing()&&status!=null){status.setVisibility(View.VISIBLE);status.setText(s);}});}
  private void showDeletionProgress(String title){
   runOnUiThread(()->{
    screen(title);
@@ -142,27 +142,96 @@ public class AdminActivity extends Activity {
    button("← Voltar ao ADM",this::dashboard);
   }).addOnFailureListener(e->msg("Erro ao listar ADM: "+e.getMessage()));
  }
+ private TextView detailText(String text,int size,int color,boolean bold){
+  TextView t=new TextView(this);t.setText(text);t.setTextSize(size);t.setTextColor(color);
+  if(bold)t.setTypeface(null,1);return t;
+ }
+ private void detailHeading(String title){
+  TextView t=detailText(title,19,Color.WHITE,true);t.setPadding(0,dp(23),0,dp(8));root.addView(t);
+ }
+ private void detailInfo(String name,String email,String uid,boolean blocked,com.google.firebase.Timestamp expiry,boolean vip){
+  LinearLayout card=new LinearLayout(this);card.setOrientation(1);card.setPadding(dp(17),dp(18),dp(17),dp(18));card.setBackground(shape(0xff1c293e,18));
+  LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.topMargin=dp(8);root.addView(card,cp);
+  TextView initials=detailText("●  "+name,22,Color.WHITE,true);card.addView(initials);
+  TextView mail=detailText(email,13,0xffb9c6d8,false);mail.setPadding(0,dp(5),0,dp(8));card.addView(mail);
+  String state=blocked?"BLOQUEADO":expiry==null||!vip||expiry.toDate().getTime()<=System.currentTimeMillis()?"SEM ASSINATURA VÁLIDA":"ATIVO";
+  TextView stateText=detailText("●  "+state,14,blocked?0xffff6c81:state.equals("ATIVO")?0xff6ce4ac:0xffffbf69,true);
+  card.addView(stateText);
+  TextView date=detailText("Vencimento: "+(expiry==null?"Não definido":new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(expiry.toDate())),16,Color.WHITE,true);
+  date.setPadding(0,dp(14),0,dp(7));card.addView(date);
+  TextView id=detailText("ID: "+uid,12,0xffaebdd1,false);id.setTextIsSelectable(true);card.addView(id);
+ }
+ private void actionGrid(String[] labels,Runnable[] actions){
+  for(int i=0;i<labels.length;i+=2){
+   LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);
+   LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.topMargin=dp(9);root.addView(row,rp);
+   for(int j=i;j<Math.min(i+2,labels.length);j++){
+    final Runnable run=actions[j];
+    TextView tile=detailText(labels[j],15,Color.WHITE,true);tile.setGravity(Gravity.CENTER);tile.setPadding(dp(9),dp(14),dp(9),dp(14));
+    tile.setMinHeight(dp(86));tile.setBackground(shape(0xff26364e,15));
+    LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(90),1);if(j%2==1)lp.leftMargin=dp(10);
+    row.addView(tile,lp);tile.setOnClickListener(v->run.run());
+   }
+
+  }
+ }
  private void userDetail(String uid,String display,boolean ignored){
   if(!authorized)return;
   firestore.collection("usuarios").document(uid).get().addOnSuccessListener(doc->{
    if(!doc.exists()){msg("Perfil não encontrado.");return;}
    boolean blocked=Boolean.TRUE.equals(doc.getBoolean("bloqueado"));
+   boolean vip=Boolean.TRUE.equals(doc.getBoolean("vipAtivo"));
    com.google.firebase.Timestamp expiry=doc.getTimestamp("vipAte");
-   screen("Gerenciar cliente");
-   msg(display+"\nID: "+uid+"\nAcesso: "+(blocked?"BLOQUEADO":"ATIVO")+
-    "\nAssinatura: "+(expiry==null?"sem vencimento":new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(expiry.toDate())));
-   button("📅 Renovar 30 dias",()->renewCustomer(uid,30));
-   button("📅 Renovar 60 dias",()->renewCustomer(uid,60));
-   button("📅 Renovar 90 dias",()->renewCustomer(uid,90));
-   button("📅 Renovar 180 dias",()->renewCustomer(uid,180));
-   button("📅 Renovar 365 dias (1 ano)",()->renewCustomer(uid,365));
-   button("↺ Resetar assinatura",()->resetSubscription(uid));
-   String email=doc.getString("email");
-   if(email!=null&&!email.isEmpty())button("✉ Enviar redefinição de senha",()->passwordReset(email));
-   button(blocked?"🔓 Desbloquear usuário":"🔒 Bloquear usuário",()->changeBlocked(uid,!blocked));
-   button("↻ Atualizar perfil",()->userDetail(uid,display,false));
-   button("← Voltar aos perfis",this::manageUsers);
+   String name=doc.getString("nome");if(name==null||name.trim().isEmpty())name="Cliente";
+   String email=doc.getString("email");if(email==null)email="Sem e-mail";
+   screen("Gerenciar cliente");status.setVisibility(View.GONE);
+   detailInfo(name,email,uid,blocked,expiry,vip);
+   detailHeading("Renovar assinatura");
+   actionGrid(new String[]{"30 dias","60 dias","90 dias","180 dias","1 ano"},
+    new Runnable[]{()->renewCustomer(uid,30),()->renewCustomer(uid,60),()->renewCustomer(uid,90),()->renewCustomer(uid,180),()->renewCustomer(uid,365)});
+   button("▦  Definir vencimento manualmente",()->chooseExpiryDate(uid));
+   detailHeading("Gerenciar acesso");
+   if(!email.equals("Sem e-mail")){
+    String mail=email;
+    actionGrid(new String[]{blocked?"🔓  Desbloquear\ncliente":"🔒  Bloquear\ncliente","↺  Resetar\nassinatura","✉  Redefinir\nsenha","↻  Atualizar\nperfil"},
+     new Runnable[]{()->changeBlocked(uid,!blocked),()->resetSubscription(uid),()->passwordReset(mail),()->userDetail(uid,display,false)});
+   }else{
+    actionGrid(new String[]{blocked?"🔓  Desbloquear\ncliente":"🔒  Bloquear\ncliente","↺  Resetar\nassinatura","↻  Atualizar\nperfil"},
+     new Runnable[]{()->changeBlocked(uid,!blocked),()->resetSubscription(uid),()->userDetail(uid,display,false)});
+   }
+   button("←  Voltar aos clientes",this::manageUsers);
   }).addOnFailureListener(e->msg("Erro ao carregar perfil: "+e.getMessage()));
+ }
+ private void chooseExpiryDate(String uid){
+  java.util.Calendar now=java.util.Calendar.getInstance();
+  DatePickerDialog picker=new DatePickerDialog(this,(view,year,month,day)->{
+   java.util.Calendar chosen=java.util.Calendar.getInstance();
+   chosen.set(year,month,day,23,59,59);chosen.set(java.util.Calendar.MILLISECOND,999);
+   java.util.Date date=chosen.getTime();
+   if(date.getTime()<=System.currentTimeMillis()){
+    new AlertDialog.Builder(this).setTitle("Data inválida")
+     .setMessage("Escolha hoje ou uma data futura para o vencimento.")
+     .setPositiveButton("OK",null).show();return;
+   }
+   String formatted=new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(date);
+   new AlertDialog.Builder(this).setTitle("Definir vencimento")
+    .setMessage("A assinatura vencerá em "+formatted+" às 23h59.\n\nEssa data substituirá o vencimento anterior. Confirmar?")
+    .setNegativeButton("Cancelar",null).setPositiveButton("Salvar",(d,w)->saveManualExpiry(uid,date,formatted)).show();
+  },now.get(java.util.Calendar.YEAR),now.get(java.util.Calendar.MONTH),now.get(java.util.Calendar.DAY_OF_MONTH));
+  picker.getDatePicker().setMinDate(System.currentTimeMillis()-60000L);
+  picker.show();
+ }
+ private void saveManualExpiry(String uid,java.util.Date date,String formatted){
+  protectedCustomer(uid,()->{
+   java.util.Map<String,Object> updates=new java.util.HashMap<>();
+   updates.put("vipAtivo",true);updates.put("vipAte",new com.google.firebase.Timestamp(date));
+   updates.put("alteradoEm",com.google.firebase.firestore.FieldValue.serverTimestamp());
+   updates.put("alteradoPor",auth.getCurrentUser().getUid());
+   firestore.collection("usuarios").document(uid).update(updates)
+    .addOnSuccessListener(v->{new AlertDialog.Builder(this).setTitle("Vencimento atualizado")
+     .setMessage("Assinatura válida até "+formatted).setPositiveButton("OK",null).show();userDetail(uid,"",false);})
+    .addOnFailureListener(e->msg("Erro ao salvar vencimento: "+e.getMessage()));
+  });
  }
  private void protectedCustomer(String uid,Runnable operation){
   if(!authorized||auth.getCurrentUser()==null)return;
