@@ -123,27 +123,63 @@ public final class FirebaseCatalogSync {
   for(String child:children)deleteNode(ctx,path+"/"+child,token,progress,removed,depth+1);
   request(address,"DELETE",null);
  }
+ /** A batch contains up to 200 direct children, represented by null in one PATCH. */
+ private static final int DELETE_BATCH=200;
+ public interface DeleteProgress {void update(int done,int total,String folder);}
+ private static void deleteChildren(Context ctx,String path,String token,ArrayList<String> keys,DeleteProgress progress,int[] done,int total)throws Exception{
+  String url=base(ctx)+"/"+encodedPath(path)+".json?auth="+URLEncoder.encode(token,"UTF-8");
+  for(int start=0;start<keys.size();){
+   int end=Math.min(start+DELETE_BATCH,keys.size());
+   // Build a PATCH that removes 200 child records in one HTTP request.
+   JSONObject patch=new JSONObject();
+   for(int j=start;j<end;j++)patch.put(keys.get(j),JSONObject.NULL);
+   try{
+    request(url,"PATCH",patch.toString());
+    done[0]+=end-start;progress.update(done[0],total,path);
+   }catch(IOException ex){
+    if(!oversized(ex))throw ex;
+    // Large children can exceed RTDB's write limit even with a small PATCH.
+    // Recurse only for the oversized batch; don't repeat successful batches.
+    for(int j=start;j<end;j++){
+     String child=path+"/"+keys.get(j);
+     deleteNode(ctx,child,token,n->{},new int[]{0},0);
+     done[0]++;progress.update(done[0],total,path);
+    }
+   }
+   start=end;
+  }
+ }
  public static int deleteFolderBatched(Context ctx,String path,String token,LocalCatalog.Progress progress)throws Exception{
+  return deleteFolderBatched(ctx,path,token,(done,total,folder)->progress.update(done));
+ }
+ public static int deleteFolderBatched(Context ctx,String path,String token,DeleteProgress progress)throws Exception{
   validatePath(path);
   if(path.isEmpty()||path.equals("catalogo_unico")||path.equals("catalogo_unico/meta")||path.equals("__meta")||path.equals("admins")||path.equals("config"))
    throw new IOException("Pasta protegida; selecione uma subpasta");
-  int[] removed={0};
-  // Never attempt a single huge root PATCH or DELETE.
-  java.util.ArrayList<String> keys=listFolders(ctx,path,token);
+  ArrayList<String> keys=listFolders(ctx,path,token);int[] done={0};
+  progress.update(0,keys.size(),path);
   if(keys.isEmpty()){
-   deleteNode(ctx,path,token,progress,removed,0);
-   return removed[0];
+   // Empty nodes need no child-by-child requests.
+   request(base(ctx)+"/"+encodedPath(path)+".json?auth="+URLEncoder.encode(token,"UTF-8"),"DELETE",null);
+   return 0;
   }
-  for(String child:keys)deleteNode(ctx,path+"/"+child,token,progress,removed,0);
-  request(base(ctx)+"/"+encodedPath(path)+".json?auth="+URLEncoder.encode(token,"UTF-8"),"DELETE",null);
-  return removed[0];
+  deleteChildren(ctx,path,token,keys,progress,done,keys.size());
+  return done[0];
  }
  public static void deleteAll(Context ctx,String token)throws Exception{
-  String[] catalogPaths={"catalogo_1_series/items","catalogo_2_filmes/items","catalogo_3_iptv/items","catalogo_unico/items"};
-  for(String path:catalogPaths){
-   deleteFolderBatched(ctx,path,token,n->{});
+  deleteAll(ctx,token,(done,total,folder)->{});
+ }
+ public static int deleteAll(Context ctx,String token,DeleteProgress progress)throws Exception{
+  String[] paths={"catalogo_1_series/items","catalogo_2_filmes/items","catalogo_3_iptv/items","catalogo_unico/items"};
+  ArrayList<ArrayList<String>> folders=new ArrayList<>();int total=0;
+  for(String path:paths){ArrayList<String> keys=listFolders(ctx,path,token);folders.add(keys);total+=keys.size();}
+  final int expected=total;int[] done={0};progress.update(0,expected,"Preparando exclusão total");
+  for(int i=0;i<paths.length;i++){
+   String path=paths[i];ArrayList<String> keys=folders.get(i);
+   deleteChildren(ctx,path,token,keys,progress,done,expected);
   }
   markChanged(ctx,token);
+  return done[0];
  }
  public static void deleteOne(Context ctx,String id,String token)throws Exception{
   request(endpoint(ctx,"items/"+URLEncoder.encode(id,"UTF-8"),token),"DELETE",null);

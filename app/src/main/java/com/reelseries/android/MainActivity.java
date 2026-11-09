@@ -26,26 +26,17 @@ public class MainActivity extends Activity {
  TextView searchIcon=navText("⌕",30);header.addView(searchIcon,new LinearLayout.LayoutParams(dp(39),dp(48)));searchIcon.setOnClickListener(v->{search.requestFocus();((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(search,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});
  TextView profile=navText("◉",24);header.addView(profile,new LinearLayout.LayoutParams(dp(39),dp(48)));profile.setOnClickListener(v->startActivity(new Intent(this,ProfileActivity.class)));
  TextView admin=navText("⚙",22);header.addView(admin,new LinearLayout.LayoutParams(dp(39),dp(48)));admin.setOnClickListener(v->startActivity(new Intent(this,AdminActivity.class)));
- ScrollView scroll=new ScrollView(this){
-  float downY; boolean pulling=false;
-  @Override public boolean onInterceptTouchEvent(android.view.MotionEvent e){
-   if(e.getActionMasked()==android.view.MotionEvent.ACTION_DOWN){downY=e.getY();pulling=false;}
-   if(e.getActionMasked()==android.view.MotionEvent.ACTION_MOVE && getScrollY()==0 && e.getY()-downY>dp(75)){
-    pulling=true;return true;
-   }
-   return super.onInterceptTouchEvent(e);
-  }
-  @Override public boolean onTouchEvent(android.view.MotionEvent e){
-   if(pulling){
-    if(e.getActionMasked()==android.view.MotionEvent.ACTION_UP){
-     pulling=false;refreshByPull();return true;
-    }
-    if(e.getActionMasked()==android.view.MotionEvent.ACTION_CANCEL){pulling=false;return true;}
-    return true;
-   }
-   return super.onTouchEvent(e);
-  }
- };scroll.setFillViewport(true);layout.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));LinearLayout content=new LinearLayout(this);content.setOrientation(1);content.setPadding(dp(15),0,dp(15),dp(14));scroll.addView(content);
+ androidx.swiperefreshlayout.widget.SwipeRefreshLayout swipe=new androidx.swiperefreshlayout.widget.SwipeRefreshLayout(this);
+ swipe.setColorSchemeColors(0xffef4356);swipe.setProgressBackgroundColorSchemeColor(0xff202027);
+ layout.addView(swipe,new LinearLayout.LayoutParams(-1,0,1));
+ ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);swipe.addView(scroll);
+ swipe.setOnChildScrollUpCallback((parent,child)->scroll.canScrollVertically(-1));
+ swipe.setOnRefreshListener(()->{
+  refreshByPull();
+  // Stops spinner after a bounded wait even if the network is slow.
+  handler.postDelayed(()->swipe.setRefreshing(false),1800);
+ });
+ LinearLayout content=new LinearLayout(this);content.setOrientation(1);content.setPadding(dp(15),0,dp(15),dp(14));scroll.addView(content);
  android.widget.FrameLayout hero=new android.widget.FrameLayout(this);hero.setBackgroundColor(0xff19191f);content.addView(hero,new LinearLayout.LayoutParams(-1,dp(390)));
  ImageView heroImage=new ImageView(this);heroImage.setScaleType(ImageView.ScaleType.CENTER_CROP);hero.addView(heroImage,new android.widget.FrameLayout.LayoutParams(-1,-1));
  View overlay=new View(this);overlay.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0x120b0b0e,0x770b0b0e,0xff0b0b0e}));hero.addView(overlay,new android.widget.FrameLayout.LayoutParams(-1,-1));

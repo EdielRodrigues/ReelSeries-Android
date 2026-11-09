@@ -20,7 +20,7 @@ public class AdminActivity extends Activity {
  private final FirebaseAuth auth=FirebaseAuth.getInstance();
  private final FirebaseFirestore firestore=FirebaseFirestore.getInstance();
  private final ExecutorService worker=Executors.newSingleThreadExecutor();
- private LinearLayout root;private TextView status;private boolean authorized=false,busy=false;
+ private LinearLayout root;private TextView status;private ProgressBar deleteBar;private TextView deleteCounter;private boolean authorized=false,busy=false;
  private LocalCatalog catalog;
  @Override public void onCreate(Bundle b){super.onCreate(b);catalog=new LocalCatalog(this);login();}
  private int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+0.5f);}
@@ -36,6 +36,27 @@ public class AdminActivity extends Activity {
  private void button(String label,Runnable action){TextView b=new TextView(this);b.setText(label);b.setTextSize(15);b.setTypeface(null,1);b.setTextColor(Color.WHITE);b.setGravity(Gravity.CENTER_VERTICAL);b.setPadding(dp(17),dp(15),dp(12),dp(15));b.setMinHeight(dp(54));b.setBackground(shape(0xff202d42,13));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(9);root.addView(b,lp);b.setOnClickListener(v->action.run());}
  private void section(String title){TextView t=new TextView(this);t.setText(title.toUpperCase(java.util.Locale.ROOT));t.setTextSize(13);t.setTypeface(null,1);t.setTextColor(0xffff627a);t.setPadding(0,dp(23),0,dp(5));root.addView(t);}
  private void msg(String s){runOnUiThread(()->{if(!isFinishing()&&status!=null)status.setText(s);});}
+ private void showDeletionProgress(String title){
+  runOnUiThread(()->{
+   screen(title);
+   status.setText("Preparando exclusão...");
+   deleteCounter=new TextView(this);deleteCounter.setTextColor(Color.WHITE);deleteCounter.setTextSize(18);
+   deleteCounter.setPadding(0,dp(18),0,dp(8));deleteCounter.setText("0 itens excluídos");root.addView(deleteCounter);
+   deleteBar=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
+   deleteBar.setMax(1000);deleteBar.setProgress(0);
+   deleteBar.setProgressTintList(android.content.res.ColorStateList.valueOf(0xffef4356));
+   root.addView(deleteBar,new LinearLayout.LayoutParams(-1,dp(12)));
+   button("← Voltar ao painel",()->{if(!busy)settingsPanel();else msg("Aguarde a conclusão da exclusão.");});
+  });
+ }
+ private void deletionProgress(int done,int total,String folder){
+  runOnUiThread(()->{
+   if(isFinishing())return;
+   if(deleteCounter!=null)deleteCounter.setText(done+" / "+total+" itens excluídos"+(total>0?" • "+(done*100/total)+"%":""));
+   if(deleteBar!=null){deleteBar.setIndeterminate(total==0);if(total>0)deleteBar.setProgress((int)((long)done*1000/total));}
+   if(status!=null)status.setText("Excluindo: "+folder+" • lotes de até 200 registros");
+  });
+ }
  private void login(){authorized=false;screen("Acesso protegido");if(auth.getCurrentUser()!=null){verify();return;}EditText email=field("E-mail"),pass=field("Senha");pass.setInputType(129);button("Entrar",()->{msg("Autenticando...");auth.signInWithEmailAndPassword(email.getText().toString().trim(),pass.getText().toString()).addOnSuccessListener(x->verify()).addOnFailureListener(e->msg(e.getMessage()));});}
  private void verify(){if(auth.getCurrentUser()==null){login();return;}msg("Verificando administrador...");firestore.collection("admins").document(auth.getCurrentUser().getUid()).get().addOnSuccessListener(d->{if(d.exists()&&Boolean.TRUE.equals(d.getBoolean("active"))&&"admin".equals(d.getString("role"))){authorized=true;dashboard();seedBundledCatalog();}else{msg("Conta sem autorização.");button("Trocar conta",()->{auth.signOut();login();});}}).addOnFailureListener(e->msg("Erro de autorização: "+e.getMessage()));}
  private TextView panelText(String text,int size){TextView t=new TextView(this);t.setText(text);t.setTextColor(-1);t.setTextSize(size);t.setPadding(18,15,18,15);return t;}
@@ -567,9 +588,9 @@ public class AdminActivity extends Activity {
   }
   confirmAdminDeletion("Excluir pasta do Firebase?",
    "Pasta: /"+path+"\nEsta exclusão é permanente.",()->{
-    busy=true;msg("Iniciando exclusão da pasta /"+path);
+    busy=true;showDeletionProgress("Excluindo pasta do Firebase");
     FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{
-     try{int count=FirebaseCatalogSync.deleteFolderBatched(this,path,token,n->msg("Excluindo "+path+": "+n+" registros..."));
+     try{int count=FirebaseCatalogSync.deleteFolderBatched(this,path,token,(done,total,folder)->deletionProgress(done,total,folder));
       if(path.equals("catalogo_unico/items")){catalog.getWritableDatabase().delete("media",null,null);getSharedPreferences("reel_admin_catalog",MODE_PRIVATE).edit().putBoolean("asset_6760_loaded",true).apply();}
       FirebaseCatalogSync.markChanged(this,token);msg("Exclusão concluída: /"+path+" ("+count+" registros). Atualize outros aparelhos.");
      }catch(Exception e){msg("Exclusão parcial ou falhou: "+e.getMessage());}finally{busy=false;}
@@ -580,10 +601,10 @@ public class AdminActivity extends Activity {
   if(!authorized||busy)return;
   confirmAdminDeletion("Excluir TODO o catálogo?",
    "Remove todos os títulos do Firebase e deste aparelho. Contas, administradores e configurações não serão apagados.",()->{
-    busy=true;msg("Excluindo catálogo do Firebase...");
+    busy=true;showDeletionProgress("Excluindo todo o catálogo");
     FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{
      try{
-      FirebaseCatalogSync.deleteAll(this,token);
+      FirebaseCatalogSync.deleteAll(this,token,(done,total,folder)->deletionProgress(done,total,folder));
       catalog.getWritableDatabase().delete("media",null,null);
       getSharedPreferences("reel_admin_catalog",MODE_PRIVATE).edit().putBoolean("asset_6760_loaded",true).apply();
       getSharedPreferences("reel_cloud_cache_v194",MODE_PRIVATE).edit().clear().apply();
