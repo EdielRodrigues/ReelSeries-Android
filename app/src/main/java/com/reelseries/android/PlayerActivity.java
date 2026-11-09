@@ -139,7 +139,7 @@ public class PlayerActivity extends Activity {
  private void saveHistory(long pos,long duration){
   if(url==null||!url.startsWith("http")||isXtreamLive(url)||pos<2000)return;
   try{android.content.SharedPreferences pref=getSharedPreferences("reel_continue_history",MODE_PRIVATE);
-   org.json.JSONObject entry=new org.json.JSONObject();entry.put("url",url);entry.put("name",displayName);entry.put("position",pos);entry.put("duration",duration);entry.put("updated",System.currentTimeMillis());entry.put("capa",posterUrl==null?"":posterUrl);
+   org.json.JSONObject entry=new org.json.JSONObject();entry.put("url",url);entry.put("name",displayName);entry.put("position",pos);entry.put("duration",duration);entry.put("updated",System.currentTimeMillis());entry.put("capa",posterUrl==null?"":posterUrl);entry.put("adult",getIntent().getBooleanExtra("adult",false));
    String key=progressKey(url);if(duration>0&&pos>=duration-15000)pref.edit().remove(key).apply();
    else pref.edit().putString(key,entry.toString()).commit();
   }catch(Exception ignored){}
