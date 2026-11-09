@@ -517,7 +517,7 @@ public class AdminActivity extends Activity {
     final int total=keys.size();
     runOnUiThread(()->{
      if(isFinishing()||navigationId!=folderNavigationId)return;
-     msg("Pasta: /"+path+" • "+total+" itens • exibindo "+(total==0?0:from+1)+"–"+to+". Exclusão em lotes de até 500.");
+     msg("Pasta: /"+path+" • "+total+" itens • exibindo "+(total==0?0:from+1)+"–"+to+". Exclusão progressiva de registros grandes.");
      if(!path.isEmpty()&&!path.equals("catalogo_unico")&&!path.equals("catalogo_unico/meta")&&!path.equals("__meta")&&!path.equals("admins")&&!path.equals("config"))button("⚠ Excluir esta pasta",()->confirmDeleteFolder(path));
      for(String key:visible){String child=path.isEmpty()?key:path+"/"+key;button("▣ "+key,()->browseFirebaseFolders(child));}
      if(from>0)button("← Página anterior",()->browseFirebaseFolders(path,Math.max(0,from-FIREBASE_PAGE_SIZE)));
