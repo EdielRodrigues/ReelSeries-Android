@@ -75,49 +75,12 @@ public final class AccessGuard implements Application.ActivityLifecycleCallbacks
   }
  }
  private void showGate(Activity a,boolean pending){
-  if(gate!=null&&gate.isShowing()&&gate.getOwnerActivity()==a){
-   TextView label=gate.findViewById(911003);
-   if(label!=null)label.setText(reason);
-   return;
-  }
-  dismiss();
-  // Close the player/details before displaying the blocking screen on the home page.
-  if(!(a instanceof MainActivity)&&!(a instanceof ProfileActivity)){
-   a.startActivity(new Intent(a,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP));
-   a.finish();return;
-  }
-  Dialog d=new Dialog(a,android.R.style.Theme_Black_NoTitleBar_Fullscreen);
-  d.setOwnerActivity(a);d.setCancelable(false);d.setCanceledOnTouchOutside(false);
-  LinearLayout panel=new LinearLayout(a);panel.setOrientation(1);panel.setGravity(Gravity.CENTER);
-  panel.setPadding(32,40,32,40);panel.setBackgroundColor(0xff09090c);
-  TextView title=new TextView(a);title.setText("REEL SÉRIES");title.setTextColor(0xffef4356);
-  title.setTextSize(30);title.setGravity(Gravity.CENTER);title.setTypeface(null,1);panel.addView(title);
-  TextView message=new TextView(a);message.setId(911003);message.setText(reason);message.setTextSize(19);
-  message.setTextColor(Color.WHITE);message.setGravity(Gravity.CENTER);message.setPadding(0,35,0,35);panel.addView(message);
-  Button retry=new Button(a);retry.setText("Verificar novamente");panel.addView(retry);
-  retry.setOnClickListener(v->{FirebaseUser user=FirebaseAuth.getInstance().getCurrentUser();if(user!=null){uid="";connect(user);}});
-  Button signout=new Button(a);signout.setText("Sair da conta");panel.addView(signout);
-  signout.setOnClickListener(v->{FirebaseAuth.getInstance().signOut();dismiss();a.startActivity(new Intent(a,ProfileActivity.class));});
-  Button whatsapp=new Button(a);
-  whatsapp.setText("✆  RENOVAR PELO WHATSAPP");
-  whatsapp.setAllCaps(false);
-  whatsapp.setTextSize(17);
-  whatsapp.setTextColor(Color.WHITE);
-  android.graphics.drawable.GradientDrawable green=new android.graphics.drawable.GradientDrawable();
-  green.setColor(0xff128c4a);green.setCornerRadius(22f*a.getResources().getDisplayMetrics().density);
-  whatsapp.setBackground(green);
-  LinearLayout.LayoutParams wp=new LinearLayout.LayoutParams(-1,(int)(54*a.getResources().getDisplayMetrics().density));
-  wp.topMargin=(int)(18*a.getResources().getDisplayMetrics().density);
-  panel.addView(whatsapp,wp);
-  whatsapp.setOnClickListener(v->{
-   String text="Olá! Sou cliente do Reel Séries. Minha assinatura está vencida ou meu acesso foi bloqueado. Gostaria de renovar meu plano. Pode me ajudar?";
-   String url="https://wa.me/5543988402261?text="+android.net.Uri.encode(text);
-   try{a.startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse(url)));}
-   catch(Exception e){Toast.makeText(a,"Não foi possível abrir o WhatsApp. Contato: (43) 98840-2261",Toast.LENGTH_LONG).show();}
-  });
-  if(pending){signout.setVisibility(View.GONE);whatsapp.setVisibility(View.GONE);}
-  d.setContentView(panel);gate=d;d.show();
-  if(d.getWindow()!=null)d.getWindow().setLayout(-1,-1);
+  if(a instanceof BlockedActivity){((BlockedActivity)a).updateReason(reason,pending);return;}
+  Intent intent=new Intent(a,BlockedActivity.class);
+  intent.putExtra("reason",reason);intent.putExtra("pending",pending);
+  intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
+  a.startActivity(intent);
+  if(a instanceof PlayerActivity)a.finish();
  }
  private void warn(Activity a,long left){
   long days=(left+24L*60*60*1000-1)/(24L*60*60*1000);
@@ -128,7 +91,11 @@ public final class AccessGuard implements Application.ActivityLifecycleCallbacks
    .setMessage("Faltam "+days+" dia"+(days==1?"":"s")+" para vencer sua assinatura. Entre em contato com o administrador para renovar.")
    .setPositiveButton("Entendi",null).show();
  }
- private void dismiss(){if(gate!=null){try{gate.dismiss();}catch(Exception ignored){}gate=null;}}
+ private void dismiss(){
+  if(current instanceof BlockedActivity && !uid.isEmpty()){
+   ((BlockedActivity)current).unlock();
+  }
+ }
  @Override public void onActivityResumed(Activity a){current=a;render(a);}
  @Override public void onActivityPaused(Activity a){if(current==a){current=null;dismiss();}}
  @Override public void onActivityCreated(Activity a,Bundle b){}

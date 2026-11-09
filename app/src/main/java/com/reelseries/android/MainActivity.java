@@ -16,6 +16,40 @@ public class MainActivity extends Activity {
  long heroBatchStart=0L;
  Runnable heroBatchTicker;
 
+ private com.google.firebase.firestore.ListenerRegistration accessSubscription;
+ private String observedAccessUid="";
+ private void observeAccountAccess(){
+  com.google.firebase.auth.FirebaseUser user=com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
+  String next=user==null?"":user.getUid();
+  if(next.equals(observedAccessUid)&&accessSubscription!=null)return;
+  if(accessSubscription!=null){accessSubscription.remove();accessSubscription=null;}
+  observedAccessUid=next;
+  if(next.isEmpty())return;
+  accessSubscription=com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("usuarios").document(next)
+   .addSnapshotListener((doc,error)->{
+    if(isFinishing()||error!=null||doc==null||!next.equals(observedAccessUid))return;
+    // The global guard verifies the ADM role. This listener keeps the home page
+    // responsive to changes even when the client stays on MainActivity.
+    if(Boolean.TRUE.equals(doc.getBoolean("bloqueado"))){
+     com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("admins").document(next).get()
+      .addOnSuccessListener(adm->{if(!adm.exists())openBlockedScreen("Sua conta foi bloqueada pela administração.");});
+    }else{
+     com.google.firebase.Timestamp until=doc.getTimestamp("vipAte");
+     boolean active=Boolean.TRUE.equals(doc.getBoolean("vipAtivo"));
+     if(!active||until==null||until.toDate().getTime()<=System.currentTimeMillis()){
+      com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("admins").document(next).get()
+       .addOnSuccessListener(adm->{if(!adm.exists())openBlockedScreen("Sua assinatura venceu ou não está ativa. Solicite a renovação.");});
+     }
+    }
+   });
+ }
+ private void openBlockedScreen(String reason){
+  if(isFinishing())return;
+  Intent i=new Intent(this,BlockedActivity.class);
+  i.putExtra("reason",reason);i.putExtra("pending",false);
+  i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
+  startActivity(i);
+ }
  int bg=Color.rgb(10,10,13), fg=Color.WHITE; final ArrayList<String> catNames=new ArrayList<>();
  int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
  @Override public void onCreate(Bundle b){super.onCreate(b);checkApkUpdate();getWindow().setStatusBarColor(bg);getWindow().setNavigationBarColor(0xff0b0b0e);
@@ -474,9 +508,9 @@ public class MainActivity extends Activity {
   android.view.ViewGroup.LayoutParams params=grid.getLayoutParams();
   if(params!=null&&params.height!=height){params.height=height;grid.setLayoutParams(params);}
  }
- @Override protected void onResume(){super.onResume();if(continueSectionView!=null)refreshContinueCards(continueSectionView,continueCardsView);heroActive=true;if(heroBatchTicker!=null){handler.removeCallbacks(heroBatchTicker);handler.post(heroBatchTicker);}if(heroTicker!=null){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,HERO_SLIDE_MS);}if(search!=null){String wanted=getIntent().getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){getIntent().removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}if(!catalogLoadedOnce&&!loadingPage)resetFeed();if(FirebaseCatalogSync.configured(this))loadCloud();}}
+ @Override protected void onResume(){super.onResume();observeAccountAccess();if(continueSectionView!=null)refreshContinueCards(continueSectionView,continueCardsView);heroActive=true;if(heroBatchTicker!=null){handler.removeCallbacks(heroBatchTicker);handler.post(heroBatchTicker);}if(heroTicker!=null){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,HERO_SLIDE_MS);}if(search!=null){String wanted=getIntent().getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){getIntent().removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}if(!catalogLoadedOnce&&!loadingPage)resetFeed();if(FirebaseCatalogSync.configured(this))loadCloud();}}
  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(search!=null){String wanted=intent.getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){intent.removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}}}
  void details(JSONObject o){AdultProtection.require(this,AdultProtection.adult(o),()->{Intent i=new Intent(this,DetailsActivity.class);i.putExtra("item",o.toString());startActivity(i);});}
  void loadCover(String url,ImageView image){if(url.equals(image.getTag()) && image.getDrawable()!=null)return;image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag()))image.setImageBitmap(bitmap);});}}catch(Exception ignored){}});}
- @Override protected void onDestroy(){if(heroTicker!=null)handler.removeCallbacks(heroTicker);if(heroBatchTicker!=null)handler.removeCallbacks(heroBatchTicker);catalogQueries.shutdownNow();pool.shutdownNow();super.onDestroy();}
+ @Override protected void onDestroy(){if(heroTicker!=null)handler.removeCallbacks(heroTicker);if(heroBatchTicker!=null)handler.removeCallbacks(heroBatchTicker);catalogQueries.shutdownNow();pool.shutdownNow();if(accessSubscription!=null)accessSubscription.remove();super.onDestroy();}
 }
