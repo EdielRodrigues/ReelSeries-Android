@@ -10,6 +10,7 @@ import com.google.android.gms.cast.framework.SessionManagerListener;
 import com.google.android.gms.cast.framework.media.RemoteMediaClient;
 import com.google.android.gms.cast.MediaLoadOptions;
 import com.google.android.gms.cast.MediaStatus;
+import com.google.android.gms.common.images.WebImage;
 import androidx.mediarouter.media.MediaRouter;
 import androidx.mediarouter.media.MediaRouteSelector;
 import android.graphics.Canvas;
@@ -59,6 +60,8 @@ public class PlayerActivity extends Activity {
  private boolean liveHlsRetried=false;private String liveFirstError="";private ExoPlayer player;private PlayerView playerView;private FrameLayout playerRoot;private WebView webPlayer;private View webFullscreenView;private WebChromeClient.CustomViewCallback webFullscreenCallback;private boolean usingWeb=false;private long savedPosition=0;private String url;private boolean playWhenReady=true;
  private CastContext castContext;
  private String castError="";
+ private boolean castLoadPending=false;
+ private long castLoadToken=0;
  private SessionManagerListener<CastSession> castListener;
  private boolean casting=false;
  private MediaRouter mediaRouter;
@@ -108,7 +111,7 @@ public class PlayerActivity extends Activity {
   CastSession active=castContext.getSessionManager().getCurrentCastSession();
   boolean connected=active!=null&&active.isConnected();
   casting=connected;
-  if(castStateLabel!=null){castStateLabel.setText(connected?"● Conectado":"");castStateLabel.setVisibility(connected?View.VISIBLE:View.GONE);}
+  if(castStateLabel!=null){castStateLabel.setText(connected?"● TV conectada":"");castStateLabel.setVisibility(connected?View.VISIBLE:View.GONE);}
   if(castIcon!=null)castIcon.invalidate();
  }
  private final RemoteMediaClient.Callback castPlaybackCallback=new RemoteMediaClient.Callback(){
@@ -430,14 +433,37 @@ public class PlayerActivity extends Activity {
   observeRemote(remote);remoteWasPlaying=false;nearEndChecks=0;
   MediaMetadata metadata=new MediaMetadata(live?MediaMetadata.MEDIA_TYPE_TV_SHOW:MediaMetadata.MEDIA_TYPE_MOVIE);
   metadata.putString(MediaMetadata.KEY_TITLE,displayName);
+  metadata.putString(MediaMetadata.KEY_SUBTITLE,"Reel Séries • Preparando reprodução");
+  // O receptor padrão do Google Cast exibe a capa enviada como metadado.
+  // Não é possível substituir todo o fundo dele sem um receiver personalizado.
+  if(posterUrl!=null&&(posterUrl.startsWith("https://")||posterUrl.startsWith("http://"))){
+   try{metadata.addImage(new WebImage(Uri.parse(posterUrl)));}
+   catch(Exception e){android.util.Log.w("ReelSeriesCast","Capa indisponível",e);}
+  }
   MediaInfo info=new MediaInfo.Builder(castUrl)
    .setStreamType(live?MediaInfo.STREAM_TYPE_LIVE:MediaInfo.STREAM_TYPE_BUFFERED)
    .setContentType(castMimeType(castUrl)).setMetadata(metadata).build();
   long position=live?0:(changingCastEpisode?stored(url):(player!=null?Math.max(0,player.getCurrentPosition()):stored(url)));
   casting=true;updateCastState();
+  castLoadPending=true;final long token=++castLoadToken;
+  Toast.makeText(this,"Conectado à TV. Aguardando o vídeo iniciar...",Toast.LENGTH_LONG).show();
+  // LOAD aceito não significa vídeo reproduzindo: verificar estado remoto.
+  handler.postDelayed(()->{
+   if(token!=castLoadToken||!castLoadPending||isFinishing()||!session.isConnected())return;
+   RemoteMediaClient current=session.getRemoteMediaClient();
+   MediaStatus state=current==null?null:current.getMediaStatus();
+   if(state!=null&&state.getPlayerState()==MediaStatus.PLAYER_STATE_PLAYING){castLoadPending=false;return;}
+   castLoadPending=false;
+   new AlertDialog.Builder(this).setTitle("TV conectada, mas vídeo não iniciou")
+    .setMessage("A TV recebeu a conexão Google Cast, mas não confirmou a reprodução em 20 segundos. Confira se o link de vídeo abre na TV e se o formato é compatível (MP4/HLS). Alguns links Xtream exigem autenticação ou não são acessíveis diretamente pela televisão.")
+    .setPositiveButton("Tentar novamente",(d,w)->sendToTv(session))
+    .setNegativeButton("Continuar no celular",(d,w)->{if(player!=null)player.play();})
+    .show();
+  },20000);
   remote.load(info,new MediaLoadOptions.Builder().setAutoplay(true).setPlayPosition(position).build())
    .setResultCallback(result->runOnUiThread(()->{
     if(!result.getStatus().isSuccess()){
+     castLoadPending=false;castLoadToken++;
      android.util.Log.e("ReelSeriesCast","Falha no carregamento Cast: "+result.getStatus().getStatusCode());
      if(live)showLiveCastUnavailable();
      else Toast.makeText(this,"Não foi possível carregar o vídeo na TV",Toast.LENGTH_LONG).show();
@@ -449,6 +475,7 @@ public class PlayerActivity extends Activity {
       if(isFinishing()||!session.isConnected())return;
       RemoteMediaClient r=session.getRemoteMediaClient();
       MediaStatus status=r==null?null:r.getMediaStatus();
+      if(status!=null&&status.getPlayerState()==MediaStatus.PLAYER_STATE_PLAYING)castLoadPending=false;
       if(status!=null&&status.getPlayerState()==MediaStatus.PLAYER_STATE_PLAYING){pauseLocal();return;}
       if(status==null||status.getPlayerState()==MediaStatus.PLAYER_STATE_IDLE||
         status.getPlayerState()==MediaStatus.PLAYER_STATE_BUFFERING){
