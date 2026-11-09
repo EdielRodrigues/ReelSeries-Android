@@ -107,25 +107,99 @@ public class AdminActivity extends Activity {
  private void manageUsers(){manageUsersPage(null);}
  private void manageUsersPage(com.google.firebase.firestore.DocumentSnapshot cursor){
   if(!authorized){login();return;}
-  screen("Administração de perfis");
-  msg("Contas cadastradas no aplicativo • 50 por página. Contas ADM são protegidas.");
-  button("＋ Criar novo cliente",this::createCustomer);
+  screen("Administração de perfis");status.setVisibility(View.GONE);
+  TextView subtitle=detailText("Seus clientes em um só lugar",14,0xffaebdd1,false);
+  subtitle.setPadding(0,0,0,dp(10));root.addView(subtitle);
+  TextView add=detailText("＋  CRIAR NOVO CLIENTE",16,Color.WHITE,true);
+  add.setGravity(Gravity.CENTER);add.setPadding(dp(12),dp(17),dp(12),dp(17));add.setBackground(shape(0xffe73351,16));
+  LinearLayout.LayoutParams addLp=new LinearLayout.LayoutParams(-1,-2);addLp.bottomMargin=dp(14);root.addView(add,addLp);
+  add.setOnClickListener(v->createCustomer());
+  TextView loading=detailText("Carregando clientes...",14,0xffaebdd1,false);root.addView(loading);
   com.google.firebase.firestore.Query query=firestore.collection("usuarios")
    .orderBy(com.google.firebase.firestore.FieldPath.documentId()).limit(50);
   if(cursor!=null)query=query.startAfter(cursor);
   query.get().addOnSuccessListener(result->{
-   if(isFinishing())return;
-   if(result.isEmpty()){button("Nenhum perfil encontrado",()->{});}
-   for(com.google.firebase.firestore.DocumentSnapshot doc:result.getDocuments()){
-    String uid=doc.getId(),email=doc.getString("email"),name=doc.getString("nome");
-    boolean blocked=Boolean.TRUE.equals(doc.getBoolean("bloqueado"));
-    String display=(name==null||name.isEmpty()?"Usuário":name)+" • "+(email==null?"Sem e-mail":email);
-    button((blocked?"🔴 BLOQUEADO  ":"🟢 ATIVO  ")+display,()->userDetail(uid,display,blocked));
+   if(isFinishing()||!authorized)return;
+   root.removeView(loading);
+   java.util.ArrayList<com.google.firebase.firestore.DocumentSnapshot> docs=new java.util.ArrayList<>(result.getDocuments());
+   int active=0,blocked=0,expired=0;
+   for(com.google.firebase.firestore.DocumentSnapshot doc:docs){
+    int state=customerState(doc);
+    if(state==0)active++;else if(state==1)blocked++;else expired++;
    }
-   if(result.size()==50)button("Próximos 50 perfis →",()->manageUsersPage(result.getDocuments().get(result.size()-1)));
-   button("↻ Atualizar perfis",this::manageUsers);
-   button("← Voltar ao ADM",this::dashboard);
-  }).addOnFailureListener(e->msg("Não foi possível listar os perfis: "+e.getMessage()));
+   LinearLayout summary=new LinearLayout(this);summary.setOrientation(LinearLayout.HORIZONTAL);
+   LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.bottomMargin=dp(14);root.addView(summary,sp);
+   customerCount(summary,"CLIENTES",String.valueOf(docs.size()),0xffe8edf8);
+   customerCount(summary,"ATIVOS",String.valueOf(active),0xff6ce4ac);
+   customerCount(summary,"BLOQUEADOS",String.valueOf(blocked),0xffff7488);
+   if(expired>0){TextView info=detailText(expired+" sem assinatura válida nesta página",13,0xffffc77c,false);info.setPadding(0,0,0,dp(10));root.addView(info);}
+   EditText search=new EditText(this);search.setSingleLine(true);search.setTextColor(Color.WHITE);search.setHintTextColor(0xff9caac0);
+   search.setTextSize(15);search.setHint("⌕  Buscar nome, e-mail ou ID");search.setPadding(dp(16),dp(13),dp(16),dp(13));
+   search.setBackground(shape(0xff1c293e,14));root.addView(search,new LinearLayout.LayoutParams(-1,-2));
+   TextView hint=detailText("Busca nesta página • até 50 clientes",12,0xff9caac0,false);
+   hint.setPadding(0,dp(6),0,dp(6));root.addView(hint);
+   LinearLayout results=new LinearLayout(this);results.setOrientation(LinearLayout.VERTICAL);root.addView(results);
+   Runnable render=()->{
+    results.removeAllViews();String term=search.getText().toString().trim().toLowerCase(java.util.Locale.ROOT);int shown=0;
+    for(com.google.firebase.firestore.DocumentSnapshot doc:docs){
+     String name=doc.getString("nome"),email=doc.getString("email");
+     if(name==null||name.trim().isEmpty())name="Usuário";
+     if(email==null||email.trim().isEmpty())email="E-mail não informado";
+     String text=(name+" "+email+" "+doc.getId()).toLowerCase(java.util.Locale.ROOT);
+     if(!text.contains(term))continue;
+     shown++;customerCard(results,doc,name,email);
+    }
+    if(shown==0){TextView empty=detailText(docs.isEmpty()?"Nenhum cliente cadastrado nesta página.":"Nenhum cliente encontrado nesta página.",14,0xffb9c6d8,false);
+     empty.setPadding(dp(8),dp(22),dp(8),dp(22));results.addView(empty);}
+   };
+   search.addTextChangedListener(new android.text.TextWatcher(){
+    public void beforeTextChanged(CharSequence t,int st,int count,int after){}
+    public void onTextChanged(CharSequence t,int st,int before,int count){render.run();}
+    public void afterTextChanged(android.text.Editable e){}
+   });
+   render.run();
+   if(result.size()==50)button("Próximos 50 clientes  →",()->manageUsersPage(result.getDocuments().get(result.size()-1)));
+   button("↻  Atualizar lista",this::manageUsers);
+   button("←  Voltar ao ADM",this::dashboard);
+  }).addOnFailureListener(e->{root.removeView(loading);msg("Não foi possível listar os perfis: "+e.getMessage());
+   button("↻  Tentar novamente",this::manageUsers);button("←  Voltar ao ADM",this::dashboard);});
+ }
+ private int customerState(com.google.firebase.firestore.DocumentSnapshot doc){
+  if(Boolean.TRUE.equals(doc.getBoolean("bloqueado")))return 1;
+  com.google.firebase.Timestamp until=doc.getTimestamp("vipAte");
+  if(!Boolean.TRUE.equals(doc.getBoolean("vipAtivo"))||until==null||until.toDate().getTime()<=System.currentTimeMillis())return 2;
+  return 0;
+ }
+ private void customerCount(LinearLayout row,String title,String number,int color){
+  LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setGravity(Gravity.CENTER);
+  box.setPadding(dp(3),dp(12),dp(3),dp(12));box.setBackground(shape(0xff1c293e,14));
+  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(83),1);if(row.getChildCount()>0)lp.leftMargin=dp(7);row.addView(box,lp);
+  TextView n=detailText(number,23,color,true);box.addView(n);
+  TextView t=detailText(title,10,0xffaebdd1,true);t.setGravity(Gravity.CENTER);box.addView(t);
+ }
+ private void customerCard(LinearLayout parent,com.google.firebase.firestore.DocumentSnapshot doc,String name,String email){
+  String uid=doc.getId();int state=customerState(doc);
+  LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(dp(15),dp(15),dp(15),dp(14));
+  card.setBackground(shape(0xff202d42,18));LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.topMargin=dp(10);parent.addView(card,cp);
+  LinearLayout top=new LinearLayout(this);top.setOrientation(LinearLayout.HORIZONTAL);top.setGravity(Gravity.CENTER_VERTICAL);card.addView(top);
+  String initials="";for(String part:name.trim().split("\\s+")){if(!part.isEmpty()){initials+=part.substring(0,1).toUpperCase(java.util.Locale.ROOT);if(initials.length()>=2)break;}}
+  TextView avatar=detailText(initials.isEmpty()?"U":initials,17,Color.WHITE,true);avatar.setGravity(Gravity.CENTER);
+  avatar.setBackground(shape(0xff34455f,40));top.addView(avatar,new LinearLayout.LayoutParams(dp(46),dp(46)));
+  LinearLayout identity=new LinearLayout(this);identity.setOrientation(LinearLayout.VERTICAL);
+  LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(0,-2,1);ip.leftMargin=dp(11);top.addView(identity,ip);
+  TextView n=detailText(name,17,Color.WHITE,true);n.setSingleLine(true);n.setEllipsize(android.text.TextUtils.TruncateAt.END);identity.addView(n);
+  TextView mail=detailText(email,12,0xffaebdd1,false);mail.setSingleLine(true);mail.setEllipsize(android.text.TextUtils.TruncateAt.END);identity.addView(mail);
+  String stateName=state==1?"BLOQUEADO":state==2?"VENCIDO":"ATIVO";
+  int stateColor=state==1?0xffff7388:state==2?0xffffc77c:0xff6ce4ac;
+  TextView badge=detailText("● "+stateName,11,stateColor,true);badge.setGravity(Gravity.CENTER);badge.setPadding(dp(7),dp(9),dp(7),dp(9));
+  badge.setBackground(shape(0xff111b2c,10));top.addView(badge);
+  View line=new View(this);line.setBackgroundColor(0xff39465c);LinearLayout.LayoutParams vl=new LinearLayout.LayoutParams(-1,dp(1));vl.topMargin=dp(14);vl.bottomMargin=dp(11);card.addView(line,vl);
+  com.google.firebase.Timestamp until=doc.getTimestamp("vipAte");
+  String date=until==null?"Sem vencimento definido":new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(until.toDate());
+  LinearLayout bottom=new LinearLayout(this);bottom.setOrientation(LinearLayout.HORIZONTAL);bottom.setGravity(Gravity.CENTER_VERTICAL);card.addView(bottom);
+  TextView expires=detailText("▦  Vencimento: "+date,12,0xffc9d3e3,false);bottom.addView(expires,new LinearLayout.LayoutParams(0,-2,1));
+  TextView arrow=detailText("Gerenciar  ›",13,0xfffb647b,true);bottom.addView(arrow);
+  card.setOnClickListener(v->userDetail(uid,name+" • "+email,state==1));
  }
  private void manageAdmins(){
   if(!authorized){login();return;}
