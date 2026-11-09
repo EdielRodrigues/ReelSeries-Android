@@ -2,7 +2,7 @@ plugins { id("com.android.application"); id("com.google.gms.google-services") }
 android {
  namespace = "com.reelseries.android"
  compileSdk = 35
- defaultConfig { applicationId = "com.reelseries.android"; minSdk = 24; targetSdk = 35; versionCode = 1000007; versionName = "19.9" }
+ defaultConfig { applicationId = "com.reelseries.android"; minSdk = 24; targetSdk = 35; versionCode = 1000008; versionName = "20.0" }
  signingConfigs {
   getByName("debug") {
    storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
