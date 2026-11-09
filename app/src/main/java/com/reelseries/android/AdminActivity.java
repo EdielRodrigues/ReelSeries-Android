@@ -526,14 +526,47 @@ public class AdminActivity extends Activity {
    }catch(Exception e){if(navigationId==folderNavigationId)msg("Não foi possível listar pastas: "+e.getMessage());}
   }),e->msg("Falha de autenticação: "+e));
  }
+ // Uma unica confirmacao com a senha da conta administradora atual.
+ // Nunca armazenar a senha nem usar o PIN adulto para autorizar exclusoes.
+ private void confirmAdminDeletion(String title,String description,Runnable action){
+  if(!authorized||busy||auth.getCurrentUser()==null){msg("Acesso administrativo necessário.");return;}
+  String email=auth.getCurrentUser().getEmail();
+  if(email==null||email.trim().isEmpty()){
+   msg("A conta atual não tem e-mail. Entre com uma conta administradora de e-mail e senha.");return;
+  }
+  EditText password=new EditText(this);
+  password.setHint("Senha da conta administradora");
+  password.setSingleLine(true);
+  password.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+  LinearLayout container=new LinearLayout(this);container.setOrientation(LinearLayout.VERTICAL);
+  container.setPadding(dp(20),dp(10),dp(20),0);container.addView(password);
+  AlertDialog dialog=new AlertDialog.Builder(this).setTitle(title)
+   .setMessage(description+"\n\nDigite sua senha de administrador para confirmar.")
+   .setView(container).setNegativeButton("Cancelar",null)
+   .setPositiveButton("Confirmar exclusão",null).create();
+  dialog.setOnShowListener(x->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+   String secret=password.getText().toString();
+   if(secret.isEmpty()){password.setError("Informe sua senha.");return;}
+   if(!authorized||busy||auth.getCurrentUser()==null){dialog.dismiss();msg("Acesso administrativo indisponível.");return;}
+   dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+   com.google.firebase.auth.AuthCredential credential=com.google.firebase.auth.EmailAuthProvider.getCredential(email,secret);
+   auth.getCurrentUser().reauthenticate(credential)
+    .addOnSuccessListener(ok->{password.setText("");dialog.dismiss();if(authorized&&!busy)action.run();})
+    .addOnFailureListener(error->{password.setText("");password.setError("Essa senha está incorreta ou não foi possível confirmar.");
+     dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+     msg("Não foi possível confirmar a senha do administrador. Nada foi excluído.");});
+  }));
+  dialog.show();
+ }
  private void confirmDeleteFolder(String path){
   if(!authorized||busy)return;
-  if(path.isEmpty()||path.equals("catalogo_unico")||path.equals("catalogo_unico/meta")){msg("Pasta protegida");return;}
-  EditText confirm=new EditText(this);confirm.setHint("Digite EXCLUIR");
-  new AlertDialog.Builder(this).setTitle("Excluir pasta do Firebase?")
-   .setMessage("Pasta: /"+path+"\n\nEsta exclusão é permanente e ocorre em lotes. Faça backup antes. Digite EXCLUIR para confirmar.")
-   .setView(confirm).setNegativeButton("Cancelar",null).setPositiveButton("Excluir",(d,w)->{
-    if(!"EXCLUIR".equals(confirm.getText().toString().trim())){msg("Confirmação incorreta. Nada excluído.");return;}
+  // Pastas do sistema e a raiz continuam protegidas contra exclusao acidental.
+  if(path.isEmpty()||path.equals("catalogo_unico")||path.equals("catalogo_unico/meta")||
+     path.equals("__meta")||path.equals("admins")||path.equals("config")){
+   msg("Esta pasta contém dados do sistema e não pode ser excluída.");return;
+  }
+  confirmAdminDeletion("Excluir pasta do Firebase?",
+   "Pasta: /"+path+"\nEsta exclusão é permanente. Faça backup antes.",()->{
     busy=true;msg("Iniciando exclusão da pasta /"+path);
     FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{
      try{int count=FirebaseCatalogSync.deleteFolderBatched(this,path,token,n->msg("Excluindo "+path+": "+n+" registros..."));
@@ -541,32 +574,24 @@ public class AdminActivity extends Activity {
       FirebaseCatalogSync.markChanged(this,token);msg("Exclusão concluída: /"+path+" ("+count+" registros). Atualize outros aparelhos.");
      }catch(Exception e){msg("Exclusão parcial ou falhou: "+e.getMessage());}finally{busy=false;}
     }),e->{busy=false;msg("Autenticação: "+e);});
-   }).show();
+   });
  }
  private void confirmDeleteAll(){
   if(!authorized||busy)return;
-  new AlertDialog.Builder(this).setTitle("Excluir TODO o catálogo?")
-   .setMessage("Esta ação remove todos os títulos do Firebase e deste aparelho. Faça um backup JSON antes. Contas, administradores e configurações não serão apagados.")
-   .setNegativeButton("Cancelar",null).setPositiveButton("Continuar",(d,w)->{
-    EditText confirm=new EditText(this);confirm.setHint("Digite EXCLUIR TUDO");
-    new AlertDialog.Builder(this).setTitle("Confirmação final")
-     .setMessage("Digite EXCLUIR TUDO para confirmar a exclusão permanente.")
-     .setView(confirm).setNegativeButton("Cancelar",null)
-     .setPositiveButton("Excluir",(a,b)->{
-      if(!"EXCLUIR TUDO".equals(confirm.getText().toString().trim())){msg("Exclusão cancelada: confirmação incorreta.");return;}
-      busy=true;msg("Excluindo catálogo do Firebase...");
-      FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{
-       try{
-        FirebaseCatalogSync.deleteAll(this,token);
-        catalog.getWritableDatabase().delete("media",null,null);
-        getSharedPreferences("reel_admin_catalog",MODE_PRIVATE).edit().putBoolean("asset_6760_loaded",true).apply();
-        getSharedPreferences("reel_cloud_cache_v194",MODE_PRIVATE).edit().clear().apply();
-        msg("Catálogo apagado do Firebase e deste aparelho. Outros aparelhos precisam atualizar os dados.");
-       }catch(Exception e){msg("Exclusão não concluída: "+e.getMessage());}
-       finally{busy=false;}
-      }),e->{busy=false;msg("Falha de autenticação: "+e);});
-     }).show();
-   }).show();
+  confirmAdminDeletion("Excluir TODO o catálogo?",
+   "Remove todos os títulos do Firebase e deste aparelho. Contas, administradores e configurações não serão apagados. Faça backup antes.",()->{
+    busy=true;msg("Excluindo catálogo do Firebase...");
+    FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{
+     try{
+      FirebaseCatalogSync.deleteAll(this,token);
+      catalog.getWritableDatabase().delete("media",null,null);
+      getSharedPreferences("reel_admin_catalog",MODE_PRIVATE).edit().putBoolean("asset_6760_loaded",true).apply();
+      getSharedPreferences("reel_cloud_cache_v194",MODE_PRIVATE).edit().clear().apply();
+      msg("Catálogo apagado do Firebase e deste aparelho. Outros aparelhos precisam atualizar os dados.");
+     }catch(Exception e){msg("Exclusão não concluída: "+e.getMessage());}
+     finally{busy=false;}
+    }),e->{busy=false;msg("Falha de autenticação: "+e);});
+   });
  }
  private void syncAll(){if(!authorized||busy)return;msg("Preparando envio completo ao Firebase...");FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{try{int n=FirebaseCatalogSync.upload(this,catalog,null,token,c->msg("Firebase: "+c+" títulos enviados"));FirebaseCatalogSync.markChanged(this,token);msg("Três catálogos sincronizados: "+n+" registros.");}catch(Exception e){msg("Firebase: "+e.getMessage());}}),e->msg("Autenticação Firebase: "+e));}
  private void syncOrigin(String origin){if(!authorized)return;FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{try{int n=FirebaseCatalogSync.upload(this,catalog,origin,token,c->msg("Firebase: "+c+" registros enviados"));FirebaseCatalogSync.markChanged(this,token);msg("Importação sincronizada no Firebase: "+n+" registros.");}catch(Exception e){msg("Importado localmente, mas não enviado ao Firebase: "+e.getMessage());}}),e->msg("Importado localmente; falha de autenticação Firebase: "+e));}
