@@ -310,7 +310,42 @@ public class MainActivity extends Activity {
    receive.setPadding(dp(10),dp(12),0,dp(12));receive.setTextColor(0xff7ee7bd);panel.addView(receive);
    receive.setOnClickListener(v->{drawer.dismiss();forceCloudUpdate();});
   }
-  TextView profile=navText("♙  Meu perfil",17);profile.setPadding(dp(10),dp(10),0,dp(20));panel.addView(profile);profile.setOnClickListener(v->{drawer.dismiss();startActivity(new Intent(this,ProfileActivity.class));});
+  // Painel de assinatura no lugar do antigo atalho "Meu perfil".
+  LinearLayout accountCard=new LinearLayout(this);accountCard.setOrientation(LinearLayout.VERTICAL);
+  accountCard.setPadding(dp(14),dp(13),dp(14),dp(13));accountCard.setBackground(rounded(0xff202c40,16));
+  LinearLayout.LayoutParams accountLp=new LinearLayout.LayoutParams(-1,-2);accountLp.topMargin=dp(9);accountLp.bottomMargin=dp(12);
+  panel.addView(accountCard,accountLp);
+  TextView accountHeader=navText("◉  MINHA ASSINATURA",12);accountHeader.setTypeface(null,1);accountHeader.setTextColor(0xffff667b);accountCard.addView(accountHeader);
+  TextView accountEmail=navText("Carregando conta...",13);accountEmail.setPadding(0,dp(9),0,dp(8));accountEmail.setTextColor(0xffe4eaf4);
+  accountEmail.setMaxLines(2);accountEmail.setEllipsize(android.text.TextUtils.TruncateAt.END);accountCard.addView(accountEmail);
+  TextView accountExpiry=navText("Vencimento: consultando...",14);accountExpiry.setTypeface(null,1);accountExpiry.setTextColor(Color.WHITE);accountCard.addView(accountExpiry);
+  TextView accountStatus=navText("Verificando situação da assinatura...",12);accountStatus.setPadding(0,dp(7),0,0);accountCard.addView(accountStatus);
+  com.google.firebase.auth.FirebaseUser sidebarUser=com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
+  if(sidebarUser!=null){
+   String sidebarUid=sidebarUser.getUid();
+   String email=sidebarUser.getEmail();
+   accountEmail.setText("E-mail: "+(email==null||email.isEmpty()?"Não informado":email));
+   final com.google.firebase.firestore.ListenerRegistration[] sidebarListener={null};
+   sidebarListener[0]=com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("usuarios")
+    .document(sidebarUid).addSnapshotListener((doc,error)->{
+     if(!drawer.isShowing()||isFinishing())return;
+     if(error!=null){accountExpiry.setText("Vencimento indisponível");accountStatus.setText("Não foi possível consultar o Firebase");accountStatus.setTextColor(0xffffb86c);return;}
+     if(doc==null||!doc.exists()){accountExpiry.setText("Vencimento não definido");accountStatus.setText("Perfil ainda não cadastrado no Firebase");accountStatus.setTextColor(0xffffb86c);return;}
+     com.google.firebase.Timestamp due=doc.getTimestamp("vipAte");
+     boolean blocked=Boolean.TRUE.equals(doc.getBoolean("bloqueado"));
+     boolean active=Boolean.TRUE.equals(doc.getBoolean("vipAtivo"));
+     if(due==null){accountExpiry.setText("Vencimento: não definido");accountStatus.setText(blocked?"● Conta bloqueada":"● Assinatura sem data cadastrada");accountStatus.setTextColor(0xffffb86c);return;}
+     long remaining=due.toDate().getTime()-System.currentTimeMillis();
+     java.text.SimpleDateFormat formatter=new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR"));
+     formatter.setTimeZone(java.util.TimeZone.getDefault());
+     accountExpiry.setText("Vence em: "+formatter.format(due.toDate()));
+     if(blocked){accountStatus.setText("● Conta bloqueada");accountStatus.setTextColor(0xffff7388);}
+     else if(!active||remaining<=0){accountStatus.setText("● Assinatura vencida");accountStatus.setTextColor(0xffff7388);}
+     else if(remaining<=3L*24*60*60*1000){long days=Math.max(1,(remaining+86400000L-1)/86400000L);accountStatus.setText("● Vence em "+days+" dia"+(days==1?"":"s"));accountStatus.setTextColor(0xffffb86c);}
+     else {accountStatus.setText("● Assinatura ativa");accountStatus.setTextColor(0xff7ee7bd);}
+    });
+   drawer.setOnDismissListener(d->{if(sidebarListener[0]!=null){sidebarListener[0].remove();sidebarListener[0]=null;}});
+  }else{accountEmail.setText("Nenhuma conta conectada");accountExpiry.setText("Entre na sua conta");accountStatus.setText("");}
   TextView groupsTitle=navText("EXPLORAR PASTAS",13);groupsTitle.setTypeface(null,1);groupsTitle.setTextColor(0xffef4356);groupsTitle.setPadding(dp(10),dp(12),0,dp(10));panel.addView(groupsTitle);
   EditText folderSearch=new EditText(this);folderSearch.setSingleLine(true);folderSearch.setHint("Buscar pasta...");folderSearch.setTextColor(Color.WHITE);folderSearch.setHintTextColor(0xff9d9da8);folderSearch.setTextSize(15);folderSearch.setPadding(dp(12),0,dp(12),0);folderSearch.setBackground(rounded(0xff272730,12));LinearLayout.LayoutParams fs=new LinearLayout.LayoutParams(-1,dp(46));fs.bottomMargin=dp(10);panel.addView(folderSearch,fs);
   ScrollView scroll=new ScrollView(this);panel.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
