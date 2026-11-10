@@ -415,16 +415,34 @@ public class PlayerActivity extends Activity {
   if(session==null||!session.isConnected()||url==null||usingWeb)return;
   RemoteMediaClient remote=session.getRemoteMediaClient();if(remote==null)return;
   final String originalUrl=url;
+  final String host=Uri.parse(originalUrl).getHost();
+  if(host!=null&&(host.equalsIgnoreCase("localhost")||host.equals("127.0.0.1")||host.equals("0.0.0.0"))){
+   new AlertDialog.Builder(this).setTitle("Link não acessível pelo Chromecast")
+    .setMessage("Este endereço aponta para o próprio celular. O Chromecast tradicional precisa de um link de mídia acessível pela rede.")
+    .setPositiveButton("Entendi",null).show();return;
+  }
   final boolean live=isLiveCastLink(originalUrl);
   final String candidate=live?hlsCandidate(originalUrl):null;
   if(candidate!=null){
-   Toast.makeText(this,"Verificando versão HLS do canal...",Toast.LENGTH_SHORT).show();
+   Toast.makeText(this,"Verificando formato do canal para Google Cast...",Toast.LENGTH_SHORT).show();
    new Thread(()->{
     boolean available=isVerifiedHls(candidate);
     runOnUiThread(()->{
      if(isFinishing()||!originalUrl.equals(url)||!session.isConnected())return;
-     // Use the original stream if HLS is unavailable; never send an unverified URL.
-     loadCastMedia(session,remote,available?candidate:originalUrl,live);
+     if(available){
+      loadCastMedia(session,remote,candidate,true);
+     }else{
+      // A transmissão direta de MPEG-TS não é garantida no receptor padrão.
+      // Enviar o link .ts gerava uma conexão aparente sem imagem na TV.
+      new AlertDialog.Builder(this).setTitle("Canal ao vivo na televisão")
+       .setMessage("Este canal fornece MPEG-TS e não disponibilizou uma versão HLS (.m3u8) válida. O receptor padrão do Google Cast pode não reproduzir MPEG-TS diretamente. Use o espelhamento do celular ou um player de TV compatível.")
+       .setPositiveButton("Espelhar tela",(d,w)->{
+        try{startActivity(new Intent("android.settings.CAST_SETTINGS"));}
+        catch(Exception e){startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS));}
+       })
+       .setNeutralButton("Tentar envio direto",(d,w)->loadCastMedia(session,remote,originalUrl,true))
+       .setNegativeButton("Cancelar",null).show();
+     }
     });
    },"ReelCastHlsCheck").start();
   }else loadCastMedia(session,remote,originalUrl,live);
@@ -454,6 +472,7 @@ public class PlayerActivity extends Activity {
    MediaStatus state=current==null?null:current.getMediaStatus();
    if(state!=null&&state.getPlayerState()==MediaStatus.PLAYER_STATE_PLAYING){castLoadPending=false;return;}
    castLoadPending=false;
+   if(live){if(player!=null)player.play();showLiveCastUnavailable();return;}
    new AlertDialog.Builder(this).setTitle("TV conectada, mas vídeo não iniciou")
     .setMessage("A TV recebeu a conexão Google Cast, mas não confirmou a reprodução em 20 segundos. Confira se o link de vídeo abre na TV e se o formato é compatível (MP4/HLS). Alguns links Xtream exigem autenticação ou não são acessíveis diretamente pela televisão.")
     .setPositiveButton("Tentar novamente",(d,w)->sendToTv(session))
@@ -477,10 +496,7 @@ public class PlayerActivity extends Activity {
       MediaStatus status=r==null?null:r.getMediaStatus();
       if(status!=null&&status.getPlayerState()==MediaStatus.PLAYER_STATE_PLAYING)castLoadPending=false;
       if(status!=null&&status.getPlayerState()==MediaStatus.PLAYER_STATE_PLAYING){pauseLocal();return;}
-      if(status==null||status.getPlayerState()==MediaStatus.PLAYER_STATE_IDLE||
-        status.getPlayerState()==MediaStatus.PLAYER_STATE_BUFFERING){
-       showLiveCastUnavailable();
-      }
+      // O timeout único de 20 segundos apresenta o diagnóstico, sem duplicar janelas.
      },18000);
     }
    }));
