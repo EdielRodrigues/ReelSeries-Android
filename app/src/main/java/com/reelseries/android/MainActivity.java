@@ -209,7 +209,7 @@ public class MainActivity extends Activity {
  void refreshContinueCards(LinearLayout section,LinearLayout cards){
   cards.removeAllViews();
   ArrayList<JSONObject> recent=new ArrayList<>();
-  for(java.util.Map.Entry<String,?> entry:getSharedPreferences("reel_continue_history",MODE_PRIVATE).getAll().entrySet()){
+  for(java.util.Map.Entry<String,?> entry:UserMediaState.prefs(this,"reel_continue_history").getAll().entrySet()){
    if(!(entry.getValue() instanceof String))continue;
    try{JSONObject item=new JSONObject((String)entry.getValue());
     if(item.optLong("position")>=5000&&item.optString("url").startsWith("http"))recent.add(item);

@@ -138,10 +138,10 @@ public class PlayerActivity extends Activity {
  private final Handler handler=new Handler(Looper.getMainLooper());
  private final Runnable periodic=new Runnable(){@Override public void run(){saveProgress();handler.postDelayed(this,5000);}};
  private String progressKey(String link){try{byte[] hash=MessageDigest.getInstance("SHA-256").digest(link.getBytes(StandardCharsets.UTF_8));StringBuilder b=new StringBuilder("p_");for(int i=0;i<12;i++)b.append(String.format(java.util.Locale.US,"%02x",hash[i]&255));return b.toString();}catch(Exception e){return "p_"+link.hashCode();}}
- private long stored(String link){return getSharedPreferences("reel_playback_progress",MODE_PRIVATE).getLong(progressKey(link),0);}
+ private long stored(String link){return UserMediaState.prefs(this,"reel_playback_progress").getLong(progressKey(link),0);}
  private void saveHistory(long pos,long duration){
   if(url==null||!url.startsWith("http")||isXtreamLive(url)||pos<2000)return;
-  try{android.content.SharedPreferences pref=getSharedPreferences("reel_continue_history",MODE_PRIVATE);
+  try{android.content.SharedPreferences pref=UserMediaState.prefs(this,"reel_continue_history");
    org.json.JSONObject entry=new org.json.JSONObject();entry.put("url",url);entry.put("name",displayName);entry.put("position",pos);entry.put("duration",duration);entry.put("updated",System.currentTimeMillis());entry.put("capa",posterUrl==null?"":posterUrl);entry.put("adult",getIntent().getBooleanExtra("adult",false));
    String key=progressKey(url);if(duration>0&&pos>=duration-15000)pref.edit().remove(key).apply();
    else pref.edit().putString(key,entry.toString()).commit();
@@ -151,8 +151,8 @@ public class PlayerActivity extends Activity {
   if(duration>0&&pos>=duration-15000){markComplete();return;}
   if(duration>=60000 && pos>=duration*95/100)EpisodeWatchState.setWatched(PlayerActivity.this,url,true);
   saveHistory(pos,duration);
-  getSharedPreferences("reel_playback_progress",MODE_PRIVATE).edit().putLong(progressKey(url),pos).apply();}
- private void markComplete(){if(url!=null){EpisodeWatchState.setWatched(this,url,true);getSharedPreferences("reel_playback_progress",MODE_PRIVATE).edit().remove(progressKey(url)).apply();getSharedPreferences("reel_continue_history",MODE_PRIVATE).edit().remove(progressKey(url)).apply();}}
+  UserMediaState.prefs(this,"reel_playback_progress").edit().putLong(progressKey(url),pos).apply();}
+ private void markComplete(){if(url!=null){EpisodeWatchState.setWatched(this,url,true);UserMediaState.prefs(this,"reel_playback_progress").edit().remove(progressKey(url)).apply();UserMediaState.prefs(this,"reel_continue_history").edit().remove(progressKey(url)).apply();}}
  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(0xff000000);getWindow().setNavigationBarColor(0xff000000);getWindow().getDecorView().setSystemUiVisibility(4|1024|4096);setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
  displayName=getIntent().getStringExtra("name");if(displayName==null)displayName="Reel Séries";posterUrl=getIntent().getStringExtra("capa");if(posterUrl==null)posterUrl="";
  url=getIntent().getStringExtra("url");if(url==null||!url.startsWith("http")){finish();return;}
@@ -599,7 +599,7 @@ player=newConfiguredPlayer();playerView.setPlayer(player);
     String json=new org.json.JSONTokener(result).nextValue().toString();
     if(json.startsWith("{")){JSONObject data=new JSONObject(json);long pos=data.optLong("p",0),dur=data.optLong("d",0);
      if(pos>2000&&dur>0&&!isXtreamLive(url)){
-      getSharedPreferences("reel_playback_progress",MODE_PRIVATE).edit().putLong(progressKey(url),pos).apply();saveHistory(pos,dur);
+      UserMediaState.prefs(this,"reel_playback_progress").edit().putLong(progressKey(url),pos).apply();saveHistory(pos,dur);
      }
     }
    }catch(Exception ignored){}

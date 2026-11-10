@@ -23,7 +23,7 @@ public class FavoritesActivity extends Activity {
   ScrollView scroll=new ScrollView(this);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));list=new LinearLayout(this);list.setOrientation(1);scroll.addView(list);
  }
  @Override protected void onResume(){super.onResume();refresh();}
- private void refresh(){list.removeAllViews();SharedPreferences prefs=getSharedPreferences("reel_favorites",MODE_PRIVATE);
+ private void refresh(){list.removeAllViews();SharedPreferences prefs=UserMediaState.prefs(this,"reel_favorites");
   ArrayList<String> names=new ArrayList<>();for(Map.Entry<String,?> e:prefs.getAll().entrySet())if(Boolean.TRUE.equals(e.getValue()))names.add(e.getKey());Collections.sort(names,String.CASE_INSENSITIVE_ORDER);
   if(names.isEmpty()){TextView empty=text("Sua lista está vazia.\nAbra um filme ou série e toque em ♡ Adicionar aos favoritos.",16,0xffb7c2d1);empty.setPadding(0,dp(30),0,0);list.addView(empty);return;}
   TextView count=text(names.size()+" títulos salvos",14,0xffb7c2d1);count.setPadding(0,0,0,dp(16));list.addView(count);
@@ -42,7 +42,7 @@ public class FavoritesActivity extends Activity {
    details.setOnClickListener(v->openDetails(selected));card.setOnClickListener(v->openDetails(selected));
   }else{TextView missing=text("Título não encontrado no catálogo local.",12,0xffcbd5e1);info.addView(missing);}
   TextView remove=text("♥  Remover da lista",13,0xffff8195);remove.setPadding(0,dp(10),0,dp(6));info.addView(remove);
-  remove.setOnClickListener(v->new AlertDialog.Builder(this).setMessage("Remover "+name+" da Minha Lista?").setNegativeButton("Cancelar",null).setPositiveButton("Remover",(d,w)->{getSharedPreferences("reel_favorites",MODE_PRIVATE).edit().remove(name).apply();refresh();}).show());
+  remove.setOnClickListener(v->new AlertDialog.Builder(this).setMessage("Remover "+name+" da Minha Lista?").setNegativeButton("Cancelar",null).setPositiveButton("Remover",(d,w)->{UserMediaState.prefs(this,"reel_favorites").edit().remove(name).apply();refresh();}).show());
  }
  private void openDetails(JSONObject item){AdultProtection.require(this,AdultProtection.adult(item),()->{Intent i=new Intent(this,DetailsActivity.class);i.putExtra("item",item.toString());startActivity(i);});}
  private android.graphics.drawable.GradientDrawable rounded(int color,int radius){android.graphics.drawable.GradientDrawable d=new android.graphics.drawable.GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
