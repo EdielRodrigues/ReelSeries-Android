@@ -599,7 +599,7 @@ player=newConfiguredPlayer();playerView.setPlayer(player);
     String json=new org.json.JSONTokener(result).nextValue().toString();
     if(json.startsWith("{")){JSONObject data=new JSONObject(json);long pos=data.optLong("p",0),dur=data.optLong("d",0);
      if(pos>2000&&dur>0&&!isXtreamLive(url)){
-      UserMediaState.prefs(this,"reel_playback_progress").edit().putLong(progressKey(url),pos).apply();saveHistory(pos,dur);
+      UserMediaState.prefs(PlayerActivity.this,"reel_playback_progress").edit().putLong(progressKey(url),pos).apply();saveHistory(pos,dur);
      }
     }
    }catch(Exception ignored){}
