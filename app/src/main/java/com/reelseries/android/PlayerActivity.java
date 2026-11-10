@@ -445,7 +445,7 @@ public class PlayerActivity extends Activity {
   com.google.firebase.auth.FirebaseUser user=com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
   if(user==null){Toast.makeText(this,"Faça login para transmitir TV ao vivo",Toast.LENGTH_LONG).show();return;}
   Toast.makeText(this,"Preparando TV ao vivo pelo conversor...",Toast.LENGTH_LONG).show();
-  user.getIdToken(false).addOnCompleteListener(task->{
+  user.getIdToken(true).addOnCompleteListener(task->{
    if(!task.isSuccessful()||task.getResult()==null){
     Toast.makeText(this,"Não foi possível autenticar o conversor",Toast.LENGTH_LONG).show();return;
    }
@@ -461,7 +461,16 @@ public class PlayerActivity extends Activity {
      byte[] body=new org.json.JSONObject().put("url",source).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
      try(java.io.OutputStream out=c.getOutputStream()){out.write(body);}
      int code=c.getResponseCode();
-     if(code!=200){error="Servidor HTTP "+code;}
+     if(code!=200){
+      String detail="";
+      try(java.io.InputStream err=c.getErrorStream()){
+       if(err!=null){byte[] buf=new byte[1024];int n=err.read(buf);if(n>0){
+        String raw=new String(buf,0,n,java.nio.charset.StandardCharsets.UTF_8);
+        detail=new org.json.JSONObject(raw).optString("detail","");
+       }}
+      }catch(Exception ignored){}
+      error="Servidor HTTP "+code+(detail.isEmpty()?"":" — "+detail);
+     }
      else{
       java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();
       try(java.io.InputStream in=c.getInputStream()){
@@ -483,7 +492,7 @@ public class PlayerActivity extends Activity {
      if(isFinishing()||!source.equals(url)||session==null||!session.isConnected())return;
      if(result!=null){loadCastMedia(session,remote,result,true);}
      else new AlertDialog.Builder(this).setTitle("Conversor de TV ao vivo")
-      .setMessage("Não foi possível preparar este canal. "+(reason==null?"":reason)+". Verifique FIREBASE_PROJECT_ID e XTREAM_ALLOWED_HOSTS no Render, e os logs do FFmpeg.")
+      .setMessage("Não foi possível preparar este canal. "+(reason==null?"":reason)+". Confira a mensagem do servidor e os logs do Render.")
       .setPositiveButton("Entendi",null).show();
     });
    },"ReelCastConverter").start();
