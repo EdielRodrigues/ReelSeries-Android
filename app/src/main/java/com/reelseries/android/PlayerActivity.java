@@ -372,7 +372,7 @@ public class PlayerActivity extends Activity {
  }
  private String castMimeType(String link){
   String lower=link.toLowerCase(java.util.Locale.ROOT);
-  if(lower.contains(".m3u8"))return "application/x-mpegURL";
+  if(lower.contains(".m3u8"))return "application/vnd.apple.mpegurl";
   if(lower.contains(".mpd"))return "application/dash+xml";
   if(lower.matches("https?://[^?#]+\\.ts([?#].*)?"))return "video/mp2t";
   if(lower.contains(".mp4"))return "video/mp4";
@@ -432,20 +432,62 @@ public class PlayerActivity extends Activity {
      if(available){
       loadCastMedia(session,remote,candidate,true);
      }else{
-      // A transmissão direta de MPEG-TS não é garantida no receptor padrão.
-      // Enviar o link .ts gerava uma conexão aparente sem imagem na TV.
-      new AlertDialog.Builder(this).setTitle("Canal ao vivo na televisão")
-       .setMessage("Este canal fornece MPEG-TS e não disponibilizou uma versão HLS (.m3u8) válida. O receptor padrão do Google Cast pode não reproduzir MPEG-TS diretamente. Use o espelhamento do celular ou um player de TV compatível.")
-       .setPositiveButton("Espelhar tela",(d,w)->{
-        try{startActivity(new Intent("android.settings.CAST_SETTINGS"));}
-        catch(Exception e){startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS));}
-       })
-       .setNeutralButton("Tentar envio direto",(d,w)->loadCastMedia(session,remote,originalUrl,true))
-       .setNegativeButton("Cancelar",null).show();
+      startConvertedLiveCast(session,remote,originalUrl);
      }
     });
    },"ReelCastHlsCheck").start();
+  }else if(live && !originalUrl.toLowerCase(java.util.Locale.ROOT).contains(".m3u8")){
+   startConvertedLiveCast(session,remote,originalUrl);
   }else loadCastMedia(session,remote,originalUrl,live);
+ }
+ private static final String CAST_CONVERTER_URL="https://reelseries-cast-converter.onrender.com";
+ private void startConvertedLiveCast(CastSession session,RemoteMediaClient remote,String source){
+  com.google.firebase.auth.FirebaseUser user=com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
+  if(user==null){Toast.makeText(this,"Faça login para transmitir TV ao vivo",Toast.LENGTH_LONG).show();return;}
+  Toast.makeText(this,"Preparando TV ao vivo pelo conversor...",Toast.LENGTH_LONG).show();
+  user.getIdToken(false).addOnCompleteListener(task->{
+   if(!task.isSuccessful()||task.getResult()==null){
+    Toast.makeText(this,"Não foi possível autenticar o conversor",Toast.LENGTH_LONG).show();return;
+   }
+   final String idToken=task.getResult().getToken();
+   new Thread(()->{
+    String playlist=null;String error=null;
+    java.net.HttpURLConnection c=null;
+    try{
+     c=(java.net.HttpURLConnection)new java.net.URL(CAST_CONVERTER_URL+"/api/streams").openConnection();
+     c.setRequestMethod("POST");c.setConnectTimeout(12000);c.setReadTimeout(20000);
+     c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json");
+     c.setRequestProperty("Authorization","Bearer "+idToken);
+     byte[] body=new org.json.JSONObject().put("url",source).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+     try(java.io.OutputStream out=c.getOutputStream()){out.write(body);}
+     int code=c.getResponseCode();
+     if(code!=200){error="Servidor HTTP "+code;}
+     else{
+      java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();
+      try(java.io.InputStream in=c.getInputStream()){
+       byte[] buf=new byte[2048];int n;while((n=in.read(buf))!=-1 && bytes.size()<8192)bytes.write(buf,0,n);
+      }
+      playlist=new org.json.JSONObject(bytes.toString("UTF-8")).getString("playlist_url");
+      // FFmpeg precisa gerar os primeiros segmentos antes do Cast.
+      boolean ready=false;
+      for(int attempt=0;attempt<12 && !ready;attempt++){
+       Thread.sleep(2000);
+       ready=isVerifiedHls(playlist);
+      }
+      if(!ready){error="O FFmpeg não gerou HLS em 24 segundos";playlist=null;}
+     }
+    }catch(Exception e){error=e.getClass().getSimpleName();}
+    finally{if(c!=null)c.disconnect();}
+    final String result=playlist,reason=error;
+    runOnUiThread(()->{
+     if(isFinishing()||!source.equals(url)||session==null||!session.isConnected())return;
+     if(result!=null){loadCastMedia(session,remote,result,true);}
+     else new AlertDialog.Builder(this).setTitle("Conversor de TV ao vivo")
+      .setMessage("Não foi possível preparar este canal. "+(reason==null?"":reason)+". Verifique FIREBASE_PROJECT_ID e XTREAM_ALLOWED_HOSTS no Render, e os logs do FFmpeg.")
+      .setPositiveButton("Entendi",null).show();
+    });
+   },"ReelCastConverter").start();
+  });
  }
  private void loadCastMedia(CastSession session,RemoteMediaClient remote,String castUrl,boolean live){
   observeRemote(remote);remoteWasPlaying=false;nearEndChecks=0;
@@ -478,7 +520,7 @@ public class PlayerActivity extends Activity {
     .setPositiveButton("Tentar novamente",(d,w)->sendToTv(session))
     .setNegativeButton("Continuar no celular",(d,w)->{if(player!=null)player.play();})
     .show();
-  },20000);
+  },live?35000:20000);
   remote.load(info,new MediaLoadOptions.Builder().setAutoplay(true).setPlayPosition(position).build())
    .setResultCallback(result->runOnUiThread(()->{
     if(!result.getStatus().isSuccess()){
