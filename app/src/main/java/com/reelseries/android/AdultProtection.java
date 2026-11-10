@@ -25,6 +25,8 @@ public final class AdultProtection {
  private static final String SALT="pin_salt";
  private static final int ITERATIONS=120000;
  private static long unlockedUntil=0L;
+ private static String unlockedUid="";
+ private static String attemptUid="";
  private static int failures=0;
  private static long blockedUntil=0L;
  private AdultProtection(){}
@@ -67,7 +69,19 @@ public final class AdultProtection {
   catch(Exception e){throw new IllegalStateException("Não foi possível validar o PIN",e);}
   finally{spec.clearPassword();}
  }
- private static SharedPreferences prefs(Context ctx){return ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE);}
+ private static String uid(){
+  com.google.firebase.auth.FirebaseUser user=com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
+  return user==null?"":user.getUid();
+ }
+ private static SharedPreferences prefs(Context ctx){
+  return UserMediaState.prefs(ctx,PREFS);
+ }
+ private static void syncAccount(){
+  String current=uid();
+  if(!current.equals(attemptUid)){
+   attemptUid=current;unlockedUid="";unlockedUntil=0;failures=0;blockedUntil=0;
+  }
+ }
  private static boolean verify(Context ctx,String pin){
   if(!valid(pin))return false;
   SharedPreferences p=prefs(ctx);
@@ -80,11 +94,12 @@ public final class AdultProtection {
   byte[] salt=new byte[16];new SecureRandom().nextBytes(salt);
   if(!prefs(ctx).edit().putString(SALT,hex(salt)).putString(HASH,hex(hash(pin,salt))).commit())
    throw new IllegalStateException("Falha ao salvar o PIN");
-  unlockedUntil=0;failures=0;blockedUntil=0;
+  unlockedUntil=0;unlockedUid="";failures=0;blockedUntil=0;
  }
- public static boolean unlocked(){return SystemClock.elapsedRealtime()<unlockedUntil;}
- public static void lock(){unlockedUntil=0;}
+ public static boolean unlocked(){syncAccount();return !uid().isEmpty()&&uid().equals(unlockedUid)&&SystemClock.elapsedRealtime()<unlockedUntil;}
+ public static void lock(){unlockedUntil=0;unlockedUid="";}
  private static boolean allowed(Activity a){
+  syncAccount();
   long remain=blockedUntil-SystemClock.elapsedRealtime();
   if(remain>0){Toast.makeText(a,"Aguarde "+((remain+999)/1000)+" segundos para tentar novamente.",Toast.LENGTH_LONG).show();return false;}
   return true;
@@ -105,6 +120,7 @@ public final class AdultProtection {
   return field;
  }
  public static void require(Activity a,boolean restricted,Runnable next){
+  syncAccount();
   if(!restricted||unlocked()){next.run();return;}
   EditText pin=input(a,"PIN de 4 dígitos");
   LinearLayout layout=new LinearLayout(a);layout.setOrientation(LinearLayout.VERTICAL);
@@ -115,13 +131,14 @@ public final class AdultProtection {
    .setView(layout).setNegativeButton("Cancelar",null).setPositiveButton("Desbloquear",null).create();
   dialog.setOnShowListener(d->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
    if(check(a,pin.getText().toString(),pin)){
-    unlockedUntil=SystemClock.elapsedRealtime()+5*60*1000L;
+    unlockedUid=uid();unlockedUntil=SystemClock.elapsedRealtime()+5*60*1000L;
     dialog.dismiss();next.run();
    }
   }));
   dialog.show();
  }
  public static void changePin(Activity a){
+  syncAccount();
   LinearLayout layout=new LinearLayout(a);layout.setOrientation(LinearLayout.VERTICAL);
   int pad=(int)(20*a.getResources().getDisplayMetrics().density);
   layout.setPadding(pad,pad,pad,0);
