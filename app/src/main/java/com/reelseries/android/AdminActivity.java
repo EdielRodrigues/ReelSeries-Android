@@ -748,11 +748,14 @@ public class AdminActivity extends Activity {
     int episodes=0,failed=0,checked=0;
     for(String[] entry:pendingSeries){
      checked++;
-     try{episodes+=xtreamSeriesEpisodesRetry(base,user,pass,entry,origin);}
-     catch(Exception e){failed++;if(failed<=3)msg("Série sem episódios: "+entry[1]+" ("+xtreamSafeError(e)+")");}
+     try{int found=xtreamSeriesEpisodesRetry(base,user,pass,entry,origin);
+      episodes+=found;
+      if(found==0){failed++;if(failed<=8)msg("Sem episódios utilizáveis: "+entry[1]+" (ID "+entry[0]+")");}
+     }
+     catch(Exception e){failed++;if(failed<=8)msg("Série sem episódios: "+entry[1]+" ("+xtreamSafeError(e)+")");}
      if(checked%100==0)msg("Xtream séries: "+episodes+" episódios salvos; "+failed+" consultas falharam");
     }
-    msg("Xtream: "+episodes+" episódios de séries salvos; "+failed+" séries com falha.");
+    msg("Xtream: "+episodes+" episódios salvos; "+failed+" séries sem episódios/erro. Se persistir, confira se get_series_info retorna episódios para os IDs importados.");
     count+=episodes;
    }
    return count;
@@ -784,17 +787,28 @@ public class AdminActivity extends Activity {
    info=new org.json.JSONObject(out.toString("UTF-8"));
   }finally{connection.disconnect();}
   org.json.JSONObject seasons=info.optJSONObject("episodes");
-  if(seasons==null){org.json.JSONArray flat=info.optJSONArray("episodes");if(flat!=null){seasons=new org.json.JSONObject();seasons.put("1",flat);}else throw new IOException("API não retornou episódios para "+series[1]);}
+  if(seasons==null){
+   org.json.JSONArray flat=info.optJSONArray("episodes");
+   if(flat!=null){seasons=new org.json.JSONObject();seasons.put("1",flat);}
+  }
+  if(seasons==null){
+   org.json.JSONObject nested=info.optJSONObject("data");
+   if(nested!=null)seasons=nested.optJSONObject("episodes");
+  }
+  if(seasons==null||seasons.length()==0)throw new IOException("get_series_info sem episódios (series_id="+series[0]+")");
   int saved=0;
   android.database.sqlite.SQLiteDatabase db=catalog.getWritableDatabase();
   db.beginTransaction();
   try{
    java.util.Iterator<String> keys=seasons.keys();
    while(keys.hasNext()){
-    String season=keys.next();org.json.JSONArray episodes=seasons.optJSONArray(season);if(episodes==null)continue;
+    String season=keys.next();org.json.JSONArray episodes=seasons.optJSONArray(season);
+    if(episodes==null){org.json.JSONObject wrapper=seasons.optJSONObject(season);if(wrapper!=null)episodes=wrapper.optJSONArray("episodes");}
+    if(episodes==null)continue;
     for(int i=0;i<episodes.length();i++){
      org.json.JSONObject ep=episodes.optJSONObject(i);if(ep==null)continue;
-     String episodeId=ep.optString("id",ep.optString("episode_id","")).trim();if(episodeId.isEmpty()||episodeId.contains("/")||episodeId.contains("\\")||episodeId.contains(".."))continue;
+     String episodeId=ep.optString("id","").trim();
+     if(episodeId.isEmpty())episodeId=ep.optString("episode_id","").trim();
      String ext=ep.optString("container_extension",ep.optJSONObject("info")==null?"mp4":ep.optJSONObject("info").optString("container_extension","mp4")).replaceAll("[^a-zA-Z0-9]","");if(ext.isEmpty())ext="mp4";
      String seasonNum=ep.optString("season",season).replaceAll("[^0-9]","");if(seasonNum.isEmpty())seasonNum="1";
      String episodeNum=ep.optString("episode_num",String.valueOf(i+1)).replaceAll("[^0-9]","");if(episodeNum.isEmpty())episodeNum=String.valueOf(i+1);
@@ -805,8 +819,11 @@ public class AdminActivity extends Activity {
      if(direct.isEmpty())direct=ep.optString("url","").trim();
      org.json.JSONObject epInfo=ep.optJSONObject("info");
      if(direct.isEmpty()&&epInfo!=null)direct=epInfo.optString("direct_source",epInfo.optString("stream_url","")).trim();
-     String standard=base+"/series/"+java.net.URLEncoder.encode(user,"UTF-8")+"/"+java.net.URLEncoder.encode(pass,"UTF-8")+"/"+java.net.URLEncoder.encode(episodeId,"UTF-8")+"."+ext;
+     boolean validId=!episodeId.isEmpty()&&!episodeId.contains("/")&&!episodeId.contains("\\")&&!episodeId.contains("..");
+     String standard=validId?base+"/series/"+java.net.URLEncoder.encode(user,"UTF-8")+"/"+java.net.URLEncoder.encode(pass,"UTF-8")+"/"+java.net.URLEncoder.encode(episodeId,"UTF-8")+"."+ext:"";
      String url=xtreamEpisodeUrl(direct,standard);
+     if(url.isEmpty())continue;
+     if(!validId)episodeId="link_"+LocalCatalog.hash(url);
      String name=series[1]+" S"+seasonNum+"E"+episodeNum;
      String episodeTitle=ep.optString("title","").trim();if(!episodeTitle.isEmpty())name+=" - "+episodeTitle;
      String key="xtream_"+LocalCatalog.hash(base+"|"+user+"|episode|"+series[0]+"|"+episodeId);
