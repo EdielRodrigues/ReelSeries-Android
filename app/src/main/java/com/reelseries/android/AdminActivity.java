@@ -585,7 +585,7 @@ public class AdminActivity extends Activity {
   });
   button("☷  VISUALIZAR CATÁLOGO ENVIADO",()->xtreamSentCatalog(0,""));
   section("Sincronizar catálogo");
-  button("▣  SÉRIES + TEMPORADAS + EPISÓDIOS",()->xtreamStart("series"));
+  button("▣  SÉRIES + TEMPORADAS + EPISÓDIOS (Xtream + links individuais)",()->xtreamStart("series"));
   button("▤  FILMES",()->xtreamStart("movie"));
   button("▣  TV AO VIVO",()->xtreamStart("live"));
   button("↻  SINCRONIZAR TUDO",()->xtreamStart("all"));
@@ -761,6 +761,17 @@ public class AdminActivity extends Activity {
  private int xtreamSeriesEpisodesRetry(String base,String user,String pass,String[] series,String origin)throws Exception{
   Exception last=null;for(int attempt=1;attempt<=3;attempt++){try{return xtreamSeriesEpisodes(base,user,pass,series,origin);}catch(Exception e){last=e;if(attempt<3)Thread.sleep(600L*attempt);}}throw last;
  }
+ private String xtreamEpisodeUrl(String candidate,String fallback){
+  // Never accept non-web schemes from untrusted provider JSON.
+  if(candidate==null||candidate.isEmpty())return fallback;
+  try{
+   java.net.URI u=new java.net.URI(candidate);
+   String scheme=u.getScheme();
+   if(scheme==null||(!scheme.equalsIgnoreCase("http")&&!scheme.equalsIgnoreCase("https")))return fallback;
+   if(u.getHost()==null||u.getHost().isEmpty()||u.getUserInfo()!=null)return fallback;
+   return candidate;
+  }catch(Exception e){return fallback;}
+ }
  private int xtreamSeriesEpisodes(String base,String user,String pass,String[] series,String origin)throws Exception{
   String api=base+"/player_api.php?username="+java.net.URLEncoder.encode(user,"UTF-8")
    +"&password="+java.net.URLEncoder.encode(pass,"UTF-8")
@@ -787,7 +798,15 @@ public class AdminActivity extends Activity {
      String ext=ep.optString("container_extension",ep.optJSONObject("info")==null?"mp4":ep.optJSONObject("info").optString("container_extension","mp4")).replaceAll("[^a-zA-Z0-9]","");if(ext.isEmpty())ext="mp4";
      String seasonNum=ep.optString("season",season).replaceAll("[^0-9]","");if(seasonNum.isEmpty())seasonNum="1";
      String episodeNum=ep.optString("episode_num",String.valueOf(i+1)).replaceAll("[^0-9]","");if(episodeNum.isEmpty())episodeNum=String.valueOf(i+1);
-     String url=base+"/series/"+java.net.URLEncoder.encode(user,"UTF-8")+"/"+java.net.URLEncoder.encode(pass,"UTF-8")+"/"+java.net.URLEncoder.encode(episodeId,"UTF-8")+"."+ext;
+     // Use the individual episode URL when the provider supplies one; otherwise use Xtream standard.
+     String direct=ep.optString("direct_source","").trim();
+     if(direct.isEmpty())direct=ep.optString("stream_url","").trim();
+     if(direct.isEmpty())direct=ep.optString("play_url","").trim();
+     if(direct.isEmpty())direct=ep.optString("url","").trim();
+     org.json.JSONObject epInfo=ep.optJSONObject("info");
+     if(direct.isEmpty()&&epInfo!=null)direct=epInfo.optString("direct_source",epInfo.optString("stream_url","")).trim();
+     String standard=base+"/series/"+java.net.URLEncoder.encode(user,"UTF-8")+"/"+java.net.URLEncoder.encode(pass,"UTF-8")+"/"+java.net.URLEncoder.encode(episodeId,"UTF-8")+"."+ext;
+     String url=xtreamEpisodeUrl(direct,standard);
      String name=series[1]+" S"+seasonNum+"E"+episodeNum;
      String episodeTitle=ep.optString("title","").trim();if(!episodeTitle.isEmpty())name+=" - "+episodeTitle;
      String key="xtream_"+LocalCatalog.hash(base+"|"+user+"|episode|"+series[0]+"|"+episodeId);
