@@ -61,6 +61,12 @@ public class MainActivity extends Activity {
  LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setPadding(dp(12),dp(8),dp(12),dp(8));layout.addView(header);
  TextView menu=navText("☰",25);header.addView(menu,new LinearLayout.LayoutParams(dp(39),dp(48)));menu.setOnClickListener(v->showChannelSidebar());
  TextView brand=navText("REEL  SÉRIES",19);brand.setSingleLine(true);brand.setEllipsize(android.text.TextUtils.TruncateAt.END);brand.setGravity(Gravity.CENTER_VERTICAL);brand.setTextColor(0xfff04458);brand.setTypeface(null,1);header.addView(brand,new LinearLayout.LayoutParams(0,dp(48),1));
+ androidx.mediarouter.app.MediaRouteButton homeCast=new androidx.mediarouter.app.MediaRouteButton(this);
+ homeCast.setContentDescription("Conectar à TV pelo Google Cast");
+ homeCast.setRemoteIndicatorDrawable(androidx.core.content.ContextCompat.getDrawable(this,R.drawable.ic_cast_reel));
+ try{com.google.android.gms.cast.framework.CastContext ctx=com.google.android.gms.cast.framework.CastContext.getSharedInstance(this);homeCast.setRouteSelector(ctx.getMergedSelector());}
+ catch(Exception e){android.util.Log.w("ReelSeriesCast","Cast indisponível na tela inicial",e);homeCast.setOnClickListener(v->Toast.makeText(this,"Google Cast indisponível neste aparelho",Toast.LENGTH_LONG).show());}
+ header.addView(homeCast,new LinearLayout.LayoutParams(dp(39),dp(48)));
  TextView searchIcon=navText("⌕",30);header.addView(searchIcon,new LinearLayout.LayoutParams(dp(39),dp(48)));searchIcon.setOnClickListener(v->{search.requestFocus();((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(search,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});
  TextView profile=navText("◉",24);header.addView(profile,new LinearLayout.LayoutParams(dp(39),dp(48)));profile.setOnClickListener(v->startActivity(new Intent(this,ProfileActivity.class)));
  TextView admin=navText("⚙",22);header.addView(admin,new LinearLayout.LayoutParams(dp(39),dp(48)));admin.setOnClickListener(v->startActivity(new Intent(this,AdminActivity.class)));

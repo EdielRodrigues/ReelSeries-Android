@@ -432,11 +432,12 @@ public class PlayerActivity extends Activity {
      if(available){
       loadCastMedia(session,remote,candidate,true);
      }else{
-      // Tentar primeiro o link original no Chromecast; converter apenas se falhar.
-      loadCastMedia(session,remote,originalUrl,true);
+      startConvertedLiveCast(session,remote,originalUrl);
      }
     });
    },"ReelCastHlsCheck").start();
+  }else if(live && !originalUrl.toLowerCase(java.util.Locale.ROOT).contains(".m3u8")){
+   startConvertedLiveCast(session,remote,originalUrl);
   }else loadCastMedia(session,remote,originalUrl,live);
  }
  private static final String CAST_CONVERTER_URL="https://reelseries-cast-converter.onrender.com";
@@ -469,7 +470,6 @@ public class PlayerActivity extends Activity {
        }}
       }catch(Exception ignored){}
       error="Servidor HTTP "+code+(detail.isEmpty()?"":" — "+detail);
-      if(code==403)error+=". O servidor IPTV do canal não está autorizado no conversor; confira XTREAM_ALLOWED_HOSTS no Render";
      }
      else{
       java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();
@@ -499,7 +499,6 @@ public class PlayerActivity extends Activity {
   });
  }
  private void loadCastMedia(CastSession session,RemoteMediaClient remote,String castUrl,boolean live){
-  final boolean directLive=live && !castUrl.startsWith(CAST_CONVERTER_URL+"/hls/");
   observeRemote(remote);remoteWasPlaying=false;nearEndChecks=0;
   MediaMetadata metadata=new MediaMetadata(live?MediaMetadata.MEDIA_TYPE_TV_SHOW:MediaMetadata.MEDIA_TYPE_MOVIE);
   metadata.putString(MediaMetadata.KEY_TITLE,displayName);
@@ -524,10 +523,7 @@ public class PlayerActivity extends Activity {
    MediaStatus state=current==null?null:current.getMediaStatus();
    if(state!=null&&state.getPlayerState()==MediaStatus.PLAYER_STATE_PLAYING){castLoadPending=false;return;}
    castLoadPending=false;
-   if(live){
-    if(directLive){startConvertedLiveCast(session,remote,url);return;}
-    if(player!=null)player.play();showLiveCastUnavailable();return;
-   }
+   if(live){if(player!=null)player.play();showLiveCastUnavailable();return;}
    new AlertDialog.Builder(this).setTitle("TV conectada, mas vídeo não iniciou")
     .setMessage("A TV recebeu a conexão Google Cast, mas não confirmou a reprodução em 20 segundos. Confira se o link de vídeo abre na TV e se o formato é compatível (MP4/HLS). Alguns links Xtream exigem autenticação ou não são acessíveis diretamente pela televisão.")
     .setPositiveButton("Tentar novamente",(d,w)->sendToTv(session))
@@ -539,7 +535,7 @@ public class PlayerActivity extends Activity {
     if(!result.getStatus().isSuccess()){
      castLoadPending=false;castLoadToken++;
      android.util.Log.e("ReelSeriesCast","Falha no carregamento Cast: "+result.getStatus().getStatusCode());
-     if(live){if(directLive)startConvertedLiveCast(session,remote,url);else showLiveCastUnavailable();}
+     if(live)showLiveCastUnavailable();
      else Toast.makeText(this,"Não foi possível carregar o vídeo na TV",Toast.LENGTH_LONG).show();
      if(player!=null)player.play();
     }else{
@@ -565,6 +561,19 @@ public class PlayerActivity extends Activity {
    mediaRouter.addCallback(castContext.getMergedSelector(),routeCallback,MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY);
   }catch(Exception e){android.util.Log.e("ReelSeriesCast","Erro na busca",e);}
  }
+// Quando a conexão foi iniciada na tela inicial, enviar automaticamente o conteúdo escolhido.
+if(castContext!=null){
+ try{CastSession alreadyConnected=castContext.getSessionManager().getCurrentCastSession();
+  if(alreadyConnected!=null&&alreadyConnected.isConnected()){
+   casting=true;updateCastState();
+   handler.postDelayed(()->{
+    if(!isFinishing()&&castContext!=null){CastSession active=castContext.getSessionManager().getCurrentCastSession();
+     if(active!=null&&active.isConnected()&&url!=null)sendToTv(active);
+    }
+   },350);
+  }
+ }catch(Exception e){android.util.Log.w("ReelSeriesCast","Falha no envio automático",e);}
+}
 handler.removeCallbacks(tvUpdater);handler.post(tvUpdater);
 if(webPlayer!=null){webPlayer.onResume();handler.removeCallbacks(webProgressTick);handler.postDelayed(webProgressTick,5000);return;}
 if(isWebLink(url)){openWebPlayer(url);return;}
