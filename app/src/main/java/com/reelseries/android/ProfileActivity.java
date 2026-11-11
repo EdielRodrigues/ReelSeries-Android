@@ -38,7 +38,31 @@ vip.setText(valid?"VIP ativo até "+new java.text.SimpleDateFormat("dd/MM/yyyy",
  root.addView(label("Proteja as categorias adultas com um PIN de 4 números. O PIN inicial é 0000. Após alterar, o PIN anterior deixa de funcionar.",14,0xffbfc0ca));
  button("🔒  Alterar PIN de conteúdo adulto",v->AdultProtection.changePin(this));
  button("🔐  Bloquear conteúdo adulto agora",v->{AdultProtection.lock();Toast.makeText(this,"Conteúdo adulto bloqueado.",Toast.LENGTH_SHORT).show();});
- button("⚙  Configurações",v->new AlertDialog.Builder(this).setItems(new String[]{"Sobre o aplicativo","Voltar"},(d,w)->{if(w==0)new AlertDialog.Builder(this).setMessage("Reel Séries Android 19.5").setPositiveButton("OK",null).show();}).show());button("🛡  Administração",v->startActivity(new Intent(this,AdminActivity.class)));}
+ button("⚙  Configurações",v->new AlertDialog.Builder(this).setItems(new String[]{"Sobre o aplicativo","Voltar"},(d,w)->{if(w==0)new AlertDialog.Builder(this).setMessage("Reel Séries Android 19.5").setPositiveButton("OK",null).show();}).show());button("🛡  Administração",v->startActivity(new Intent(this,AdminActivity.class)));showSubscriptionCard();}
 
+ private void showSubscriptionCard(){
+  LinearLayout card=new LinearLayout(this);card.setOrientation(1);card.setPadding(dp(16),dp(12),dp(16),dp(16));
+  android.graphics.drawable.GradientDrawable bgCard=new android.graphics.drawable.GradientDrawable();bgCard.setColor(0xff202c40);bgCard.setCornerRadius(dp(18));card.setBackground(bgCard);
+  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(18);root.addView(card,lp);
+  TextView title=label("●  MINHA ASSINATURA",18,0xffff667b);title.setTypeface(null,1);card.addView(title);
+  FirebaseUser user=auth.getCurrentUser();if(user==null)return;
+  card.addView(label("E-mail: "+(user.getEmail()==null?"Não informado":user.getEmail()),14,0xffe4eaf4));
+  TextView due=label("Vencimento: consultando...",17,Color.WHITE);due.setTypeface(null,1);card.addView(due);
+  TextView state=label("Consultando assinatura...",14,0xffffb86c);card.addView(state);
+  db.collection("usuarios").document(user.getUid()).get().addOnSuccessListener(doc->{
+   if(isFinishing())return;
+   if(!doc.exists()){due.setText("Vencimento: não definido");state.setText("● Assinatura sem data cadastrada");return;}
+   com.google.firebase.Timestamp expiry=doc.getTimestamp("vipAte");
+   boolean blocked=Boolean.TRUE.equals(doc.getBoolean("bloqueado"));
+   boolean active=Boolean.TRUE.equals(doc.getBoolean("vipAtivo"));
+   if(expiry==null){due.setText("Vencimento: não definido");state.setText(blocked?"● Conta bloqueada":"● Assinatura sem data cadastrada");return;}
+   due.setText("Vence em: "+new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(expiry.toDate()));
+   long remaining=expiry.toDate().getTime()-System.currentTimeMillis();
+   if(blocked){state.setText("● Conta bloqueada");state.setTextColor(0xffff7388);}
+   else if(!active||remaining<=0){state.setText("● Assinatura vencida");state.setTextColor(0xffff7388);}
+   else if(remaining<=3L*86400000L){state.setText("● Vence em "+Math.max(1,(remaining+86399999L)/86400000L)+" dia(s)");state.setTextColor(0xffffb86c);}
+   else{state.setText("● Assinatura ativa");state.setTextColor(0xff7ee7bd);}
+  }).addOnFailureListener(e->{due.setText("Vencimento indisponível");state.setText("Não foi possível consultar o Firebase");});
+ }
  @Override public void onBackPressed(){if(auth.getCurrentUser()==null)finishAffinity();else super.onBackPressed();}
 }

@@ -152,10 +152,18 @@ public class PlayerActivity extends Activity {
   if(duration>=60000 && pos>=duration*95/100)EpisodeWatchState.setWatched(PlayerActivity.this,url,true);
   saveHistory(pos,duration);EpisodeWatchState.saveProgress(this,url,pos,duration);
   UserMediaState.prefs(this,"reel_playback_progress").edit().putLong(progressKey(url),pos).apply();}
+ private void rememberCastMedia(){if(url!=null&&url.startsWith("http"))getSharedPreferences("reel_cast_last",MODE_PRIVATE).edit().putString("url",url).putString("name",displayName).putString("capa",posterUrl).apply();}
  private void markComplete(){if(url!=null){EpisodeWatchState.setWatched(this,url,true);EpisodeWatchState.clearProgress(this,url);UserMediaState.prefs(this,"reel_playback_progress").edit().remove(progressKey(url)).apply();UserMediaState.prefs(this,"reel_continue_history").edit().remove(progressKey(url)).apply();}}
  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(0xff000000);getWindow().setNavigationBarColor(0xff000000);getWindow().getDecorView().setSystemUiVisibility(4|1024|4096);setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
  displayName=getIntent().getStringExtra("name");if(displayName==null)displayName="Reel Séries";posterUrl=getIntent().getStringExtra("capa");if(posterUrl==null)posterUrl="";
- url=getIntent().getStringExtra("url");if(url==null||!url.startsWith("http")){finish();return;}
+ url=getIntent().getStringExtra("url");
+ if(url==null||!url.startsWith("http")){
+  android.content.SharedPreferences last=getSharedPreferences("reel_cast_last",MODE_PRIVATE);
+  url=last.getString("url","");displayName=last.getString("name","Reel Séries");posterUrl=last.getString("capa","");
+  getIntent().putExtra("cast_notification_resume",true);
+ }
+ if(url==null||!url.startsWith("http")){finish();return;}
+ rememberCastMedia();
  try{String raw=getIntent().getStringExtra("playlist");if(raw!=null){playlist=new JSONArray(raw);playlistIndex=getIntent().getIntExtra("playlistIndex",-1);}}catch(Exception ignored){playlist=null;}
  FrameLayout root=new FrameLayout(this);playerRoot=root;root.setBackgroundColor(0xff000000);playerView=new PlayerView(this);playerView.setUseController(true);playerView.setControllerShowTimeoutMs(4500);playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);root.addView(playerView,new FrameLayout.LayoutParams(-1,-1));setContentView(root);
  // Botão Cast próprio: não usa o diálogo de MediaRouteButton que fechava a Activity.
@@ -546,7 +554,11 @@ if(castContext!=null){
    casting=true;updateCastState();
    handler.postDelayed(()->{
     if(!isFinishing()&&castContext!=null){CastSession active=castContext.getSessionManager().getCurrentCastSession();
-     if(active!=null&&active.isConnected()&&url!=null)sendToTv(active);
+     if(active!=null&&active.isConnected()&&url!=null){
+      if(getIntent().getBooleanExtra("cast_notification_resume",false)){
+       observeRemote(active.getRemoteMediaClient());pauseLocal();showTvControls();
+      }else sendToTv(active);
+     }
     }
    },350);
   }
@@ -566,7 +578,7 @@ player=newConfiguredPlayer();playerView.setPlayer(player);
   if(playlist==null||index<0||index>=playlist.length())return false;
   JSONObject o=playlist.optJSONObject(index);if(o==null)return false;
   String link=o.optString("url",o.optString("video",""));if(!link.startsWith("http"))return false;
-  if(index!=playlistIndex){if(casting && castContext!=null){try{CastSession cs=castContext.getSessionManager().getCurrentCastSession();if(cs!=null && cs.getRemoteMediaClient()!=null){RemoteMediaClient rc=cs.getRemoteMediaClient();saveHistory(rc.getApproximateStreamPosition(),rc.getMediaInfo()==null?0:rc.getMediaInfo().getStreamDuration());}}catch(Exception ignored){}}saveProgress();lastAdvancedIndex=-1;lastAutoIndex=-1;playlistIndex=index;url=link;displayName=o.optString("name","Episódio "+(index+1));savedPosition=0;restored=false;getIntent().removeExtra("resume_position");playWhenReady=true;
+  if(index!=playlistIndex){if(casting && castContext!=null){try{CastSession cs=castContext.getSessionManager().getCurrentCastSession();if(cs!=null && cs.getRemoteMediaClient()!=null){RemoteMediaClient rc=cs.getRemoteMediaClient();saveHistory(rc.getApproximateStreamPosition(),rc.getMediaInfo()==null?0:rc.getMediaInfo().getStreamDuration());}}catch(Exception ignored){}}saveProgress();lastAdvancedIndex=-1;lastAutoIndex=-1;playlistIndex=index;url=link;displayName=o.optString("name","Episódio "+(index+1));rememberCastMedia();savedPosition=0;restored=false;getIntent().removeExtra("resume_position");playWhenReady=true;
    if(castContext!=null){CastSession s=castContext.getSessionManager().getCurrentCastSession();if(s!=null&&s.isConnected()){
     changingCastEpisode=true;sendToTv(s);Toast.makeText(this,"Na TV: "+displayName,Toast.LENGTH_SHORT).show();return true;
    }}

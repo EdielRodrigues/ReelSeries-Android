@@ -16,7 +16,7 @@ import java.net.*;
 import java.util.concurrent.*;
 
 public class AdminActivity extends Activity {
- private static final int JSON=81,M3U=82,EXPORT=83;
+ private static final int JSON=81,M3U=82,EXPORT=83,APK_UPLOAD=84;
  private final FirebaseAuth auth=FirebaseAuth.getInstance();
  private final FirebaseFirestore firestore=FirebaseFirestore.getInstance();
  private final ExecutorService worker=Executors.newSingleThreadExecutor();
@@ -97,7 +97,7 @@ public class AdminActivity extends Activity {
  }
  private void settingsPanel(){screen("Configurações do sistema");msg("Reel Séries • Administração local e acesso Firebase");
   section("Firebase Realtime Database");button("☁  Enviar catálogo completo",()->syncAll());button("↓  Receber atualizações do Firebase",this::downloadCloud);
-  section("Atualização do aplicativo");button("⬆  Publicar link do novo APK no Firebase",this::publishApkDialog);
+  section("Atualização do aplicativo");button("⬆  Enviar APK ao Firebase Storage",this::chooseApkForUpload);button("🔗  Publicar link HTTPS do APK",this::publishApkDialog);
   section("TMDB • capas e informações");button("✦  Configurar servidor TMDB",this::configureTmdbServer);button("✦  Verificar capas faltantes (simulação)",()->startTmdbSync(true));button("✦  Atualizar capas e metadados ausentes",()->startTmdbSync(false));
   section("Importação");button("↻  Atualizar playlist por URL",()->urlDialog(false));button("⇧  Importar arquivo JSON",()->pick(JSON));button("⇧  Importar arquivo M3U",()->pick(M3U));
   section("Diagnósticos");button("⚠  Títulos sem vídeo",()->diagnostic("sem_video",0));button("▧  Títulos sem capa",()->diagnostic("sem_capa",0));button("≡  Categorias vazias",()->diagnostic("sem_categoria",0));
@@ -439,6 +439,34 @@ public class AdminActivity extends Activity {
     }),(error)->{busy=false;msg(error);});
    }).show();
  }
+ private void chooseApkForUpload(){
+  if(!authorized||busy)return;
+  new AlertDialog.Builder(this).setTitle("Enviar APK ao Firebase")
+   .setMessage("Selecione o APK compilado. O Firebase Storage precisa estar habilitado e permitir upload para administradores. Após o envio, o aplicativo publicará o link da nova versão no Realtime Database.")
+   .setNegativeButton("Cancelar",null).setPositiveButton("Escolher APK",(d,w)->{
+    Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/vnd.android.package-archive");startActivityForResult(i,APK_UPLOAD);
+   }).show();
+ }
+ private void uploadApk(android.net.Uri uri){
+  if(!authorized||busy)return;
+  EditText code=new EditText(this);code.setInputType(2);code.setHint("versionCode do APK, maior que o atual");
+  new AlertDialog.Builder(this).setTitle("Versão do APK selecionado").setView(code)
+   .setNegativeButton("Cancelar",null).setPositiveButton("Enviar e publicar",(d,w)->{
+    int version;try{version=Integer.parseInt(code.getText().toString().trim());}catch(Exception e){msg("Informe um versionCode numérico");return;}
+    if(version<=getPackageVersionCode()){msg("A nova versão deve ser maior que a instalada");return;}
+    busy=true;msg("Enviando APK ao Firebase Storage...");
+    com.google.firebase.storage.StorageReference ref=com.google.firebase.storage.FirebaseStorage.getInstance().getReference().child("releases/reelseries-"+version+".apk");
+    ref.putFile(uri).addOnSuccessListener(task->ref.getDownloadUrl().addOnSuccessListener(download->{
+     FirebaseCatalogSync.withToken(auth,token->worker.execute(()->{
+      try{FirebaseCatalogSync.publishApk(this,token,download.toString(),version);msg("APK enviado e versão "+version+" publicada. Os usuários receberão o aviso.");}
+      catch(Exception e){msg("APK enviado, mas não foi possível publicar a versão: "+e.getMessage());}
+      finally{busy=false;}
+     }),e->{busy=false;msg("Erro ao autenticar publicação: "+e);});
+    }).addOnFailureListener(e->{busy=false;msg("Upload concluído, mas não foi possível obter link: "+e.getMessage());}))
+    .addOnFailureListener(e->{busy=false;msg("Falha no Firebase Storage: "+e.getMessage());});
+   }).show();
+ }
+ private int getPackageVersionCode(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionCode;}catch(Exception e){return 0;}}
  private void publishApkDialog(){
   if(!authorized||busy)return;
   LinearLayout form=new LinearLayout(this);form.setOrientation(1);form.setPadding(dp(16),dp(8),dp(16),0);
@@ -528,7 +556,7 @@ public class AdminActivity extends Activity {
  private void manageTitles(){screen("Pesquisar títulos locais");EditText q=field("Pesquisar filme, série, episódio ou canal");button("Pesquisar",()->{String term=q.getText().toString().trim();worker.execute(()->{java.util.ArrayList<org.json.JSONObject> items=catalog.search(term,"Todas",60);runOnUiThread(()->{if(isFinishing())return;screen("Resultados da pesquisa");msg(items.size()+" resultados (máximo 60)");for(org.json.JSONObject item:items){String name=item.optString("nome"),cat=item.optString("categoria");button(name+" • "+cat,()->editLocal(item));}button("Nova pesquisa",this::manageTitles);button("Voltar",this::dashboard);});});});button("Voltar",this::dashboard);}
  private void editLocal(org.json.JSONObject item){screen("Editar conteúdo local");EditText name=field("Nome"),cat=field("Categoria"),cover=field("URL da capa"),url=field("URL do vídeo"),syn=field("Sinopse");name.setText(item.optString("nome"));cat.setText(item.optString("categoria"));cover.setText(item.optString("capa"));url.setText(item.optString("url"));syn.setText(item.optString("sinopse"));button("Salvar alterações",()->{String n=name.getText().toString().trim();if(n.isEmpty()){msg("Informe o nome");return;}catalog.save(catalog.getWritableDatabase(),item.optString("id"),n,cat.getText().toString(),cover.getText().toString(),url.getText().toString(),syn.getText().toString(),"","edição local");msg("Alterações salvas. Sincronizando Firebase...");syncOne(item.optString("id"));});button("Excluir título",()->new AlertDialog.Builder(this).setTitle("Excluir este título?").setMessage(item.optString("nome")).setNegativeButton("Cancelar",null).setPositiveButton("Excluir",(d,w)->{catalog.getWritableDatabase().delete("media","id=?",new String[]{item.optString("id")});syncDelete(item.optString("id"));manageTitles();}).show());button("Voltar à pesquisa",this::manageTitles);}
  private void pick(int type){if(busy){msg("Aguarde a importação terminar.");return;}Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("*/*");startActivityForResult(i,type);}
- @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(result!=RESULT_OK||data==null||data.getData()==null)return;if(request==EXPORT){if(authorized)writeBackup(data.getData());return;}if(request!=JSON&&request!=M3U)return;Uri uri=data.getData();new AlertDialog.Builder(this).setTitle("Importar no celular").setMessage("O arquivo será importado neste aparelho e enviado ao Firebase. Registros com o mesmo ID serão atualizados. Continuar?").setNegativeButton("Cancelar",null).setPositiveButton("Importar",(d,w)->importFile(uri,request)).show();}
+ @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(result!=RESULT_OK||data==null||data.getData()==null)return;if(request==EXPORT){if(authorized)writeBackup(data.getData());return;}if(request==APK_UPLOAD){uploadApk(data.getData());return;}if(request!=JSON&&request!=M3U)return;Uri uri=data.getData();new AlertDialog.Builder(this).setTitle("Importar no celular").setMessage("O arquivo será importado neste aparelho e enviado ao Firebase. Registros com o mesmo ID serão atualizados. Continuar?").setNegativeButton("Cancelar",null).setPositiveButton("Importar",(d,w)->importFile(uri,request)).show();}
  private void importFile(Uri uri,int type){if(busy||!authorized)return;busy=true;msg("Importando para SQLite local...");worker.execute(()->{try(InputStream in=getContentResolver().openInputStream(uri)){if(in==null)throw new IOException("Arquivo não disponível");String origin=type==JSON?"JSON":"arquivo:"+uri.toString();int n=type==JSON?catalog.importJson(in,c->msg("JSON: "+c+" registros locais...")):catalog.importM3u(in,origin,c->msg("M3U: "+c+" canais locais..."));msg("Importados "+n+" registros. Enviando ao Firebase...");syncOrigin(type==JSON?null:origin);}catch(Exception e){msg("Falha na importação: "+e.getMessage());}finally{busy=false;}});}
  private void urlDialog(boolean stream){EditText input=new EditText(this);input.setSingleLine(false);input.setHint(stream?"https://servidor/canal.m3u8":"https://servidor/lista.m3u");new AlertDialog.Builder(this).setTitle(stream?"Adicionar stream M3U8":"Importar playlist M3U").setView(input).setNegativeButton("Cancelar",null).setPositiveButton("Continuar",(d,w)->{String url=input.getText().toString().trim();if(!url.startsWith("https://")&&!url.startsWith("http://")){msg("Use uma URL HTTP ou HTTPS válida.");return;}if(stream)streamName(url);else importUrl(url);}).show();}
  private String xtreamPref(String key){return getSharedPreferences("xtream_admin",MODE_PRIVATE).getString(key,"");}
