@@ -205,8 +205,22 @@ public class MainActivity extends Activity {
     if(next<=installed||!link.startsWith("https://"))return;
     runOnUiThread(()->{
      if(isFinishing())return;
+      android.widget.LinearLayout updateContent=new android.widget.LinearLayout(this);
+      updateContent.setOrientation(android.widget.LinearLayout.VERTICAL);
+      int updatePad=(int)(16*getResources().getDisplayMetrics().density);
+      updateContent.setPadding(updatePad,updatePad,updatePad,updatePad);
+      android.widget.ImageView updateArtwork=new android.widget.ImageView(this);
+      updateArtwork.setImageResource(R.drawable.reelseries_update_art);
+      updateArtwork.setAdjustViewBounds(true);
+      updateArtwork.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+      updateContent.addView(updateArtwork,new android.widget.LinearLayout.LayoutParams(-1,(int)(240*getResources().getDisplayMetrics().density)));
+      android.widget.TextView updateDescription=new android.widget.TextView(this);
+      updateDescription.setText("Nova versão do Reel Séries disponível (código "+next+"). Toque em Atualizar para baixar o APK. A instalação mantém o aplicativo existente se a assinatura digital for a mesma.");
+      updateDescription.setTextSize(15);
+      updateDescription.setPadding(0,updatePad,0,0);
+      updateContent.addView(updateDescription);
      new AlertDialog.Builder(this).setTitle("Atualização disponível")
-      .setMessage("Nova versão do Reel Séries disponível. A instalação mantém o app existente se a assinatura digital for a mesma. O Android pedirá sua confirmação.")
+       .setView(updateContent)
       .setNegativeButton("Depois",null).setPositiveButton("Atualizar",(d,w)->{
        try{android.app.DownloadManager.Request req=new android.app.DownloadManager.Request(android.net.Uri.parse(link));
         req.setTitle("Atualização Reel Séries");req.setDescription("Toque no download concluído para instalar o APK");
