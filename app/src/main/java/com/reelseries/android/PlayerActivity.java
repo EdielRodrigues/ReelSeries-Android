@@ -112,7 +112,7 @@ public class PlayerActivity extends Activity {
   boolean connected=active!=null&&active.isConnected();
   casting=connected;
   if(castStateLabel!=null){castStateLabel.setText(connected?"● TV conectada":"");castStateLabel.setVisibility(connected?View.VISIBLE:View.GONE);}
-  if(castIcon!=null)castIcon.invalidate();
+  if(castIcon instanceof ImageView){((ImageView)castIcon).setImageResource(connected?R.drawable.ic_cast_conectado:R.drawable.ic_cast_desconectado);castIcon.setContentDescription(connected?"TV conectada":"Conectar à TV");}
  }
  private final RemoteMediaClient.Callback castPlaybackCallback=new RemoteMediaClient.Callback(){
   @Override public void onStatusUpdated(){
@@ -161,32 +161,10 @@ public class PlayerActivity extends Activity {
  // Botão Cast próprio: não usa o diálogo de MediaRouteButton que fechava a Activity.
  try{
   castContext=CastContext.getSharedInstance(this);
-  View castButton=new View(this){
-   private final Paint paint=new Paint(3);
-   @Override protected void onDraw(Canvas canvas){
-    super.onDraw(canvas);
-         // Ícone Cast dentro de uma área de 28x28, sem desenhar fora da View.
-     // Símbolo Cast inteiro, centralizado em uma área 28x28 dp.
-     float density=getResources().getDisplayMetrics().density;
-     float size=Math.min(25f*density,Math.min(getWidth(),getHeight())-12f*density);
-     if(size<=0)return;
-     canvas.save();
-     canvas.translate((getWidth()-size)/2f,(getHeight()-size)/2f);
-     canvas.scale(size/28f,size/28f);
-     paint.setColor(casting?0xff48dca5:0xffffffff);
-     paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(2.9f);
-     paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);
-     // Tela do Cast: borda superior, direita e início da lateral esquerda.
-     android.graphics.Path screen=new android.graphics.Path();
-     screen.moveTo(3,3);screen.lineTo(25,3);screen.lineTo(25,25);
-     screen.moveTo(3,3);screen.lineTo(3,9);
-     canvas.drawPath(screen,paint);
-     canvas.drawArc(3,13,17,27,270,90,false,paint);
-     canvas.drawArc(3,19,11,27,270,90,false,paint);
-     paint.setStyle(Paint.Style.FILL);canvas.drawCircle(3.5f,24.5f,2.7f,paint);
-     canvas.restore();
-   }
-  };
+  ImageView castButton=new ImageView(this);
+  castButton.setImageResource(R.drawable.ic_cast_desconectado);
+  castButton.setScaleType(ImageView.ScaleType.FIT_CENTER);
+  castButton.setPadding(dpCast(9),dpCast(9),dpCast(9),dpCast(9));
   castIcon=castButton;
   castButton.setContentDescription("Transmitir para TV (Google Cast)");
   castButton.setClickable(true);

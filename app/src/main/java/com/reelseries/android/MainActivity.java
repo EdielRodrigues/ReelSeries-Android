@@ -61,11 +61,19 @@ public class MainActivity extends Activity {
  LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setPadding(dp(12),dp(8),dp(12),dp(8));layout.addView(header);
  TextView menu=navText("☰",25);header.addView(menu,new LinearLayout.LayoutParams(dp(39),dp(48)));menu.setOnClickListener(v->showChannelSidebar());
  TextView brand=navText("REEL  SÉRIES",19);brand.setSingleLine(true);brand.setEllipsize(android.text.TextUtils.TruncateAt.END);brand.setGravity(Gravity.CENTER_VERTICAL);brand.setTextColor(0xfff04458);brand.setTypeface(null,1);header.addView(brand,new LinearLayout.LayoutParams(0,dp(48),1));
- androidx.mediarouter.app.MediaRouteButton homeCast=new androidx.mediarouter.app.MediaRouteButton(this);
+ homeCastIcon=new ImageView(this);
+ ImageView homeCast=homeCastIcon;
+ homeCast.setImageResource(R.drawable.ic_cast_desconectado);
+ homeCast.setScaleType(ImageView.ScaleType.FIT_CENTER);
+ homeCast.setPadding(dp(7),dp(12),dp(7),dp(12));
  homeCast.setContentDescription("Conectar à TV pelo Google Cast");
- homeCast.setRemoteIndicatorDrawable(androidx.core.content.ContextCompat.getDrawable(this,R.drawable.ic_cast_reel));
- try{com.google.android.gms.cast.framework.CastContext ctx=com.google.android.gms.cast.framework.CastContext.getSharedInstance(this);homeCast.setRouteSelector(ctx.getMergedSelector());}
- catch(Exception e){android.util.Log.w("ReelSeriesCast","Cast indisponível na tela inicial",e);homeCast.setOnClickListener(v->Toast.makeText(this,"Google Cast indisponível neste aparelho",Toast.LENGTH_LONG).show());}
+ homeCast.setClickable(true);
+ homeCast.setOnClickListener(v->{
+  if(homeCastDialogOpening)return;
+  homeCastDialogOpening=true;
+  handler.postDelayed(()->homeCastDialogOpening=false,900);
+  showHomeCastDevices();
+ });
  header.addView(homeCast,new LinearLayout.LayoutParams(dp(39),dp(48)));
  TextView searchIcon=navText("⌕",30);header.addView(searchIcon,new LinearLayout.LayoutParams(dp(39),dp(48)));searchIcon.setOnClickListener(v->{search.requestFocus();((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(search,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});
  TextView profile=navText("◉",24);header.addView(profile,new LinearLayout.LayoutParams(dp(39),dp(48)));profile.setOnClickListener(v->startActivity(new Intent(this,ProfileActivity.class)));
@@ -186,7 +194,7 @@ public class MainActivity extends Activity {
   long next=((System.currentTimeMillis()/HERO_ROTATE_MS)+1)*HERO_ROTATE_MS;
   handler.postDelayed(heroBatchTicker,Math.max(1000L,next-System.currentTimeMillis()+200L));
  }
- @Override protected void onPause(){super.onPause();heroActive=false;if(heroTicker!=null)handler.removeCallbacks(heroTicker);if(heroBatchTicker!=null)handler.removeCallbacks(heroBatchTicker);}
+ @Override protected void onPause(){handler.removeCallbacks(homeCastStatusUpdater);super.onPause();heroActive=false;if(heroTicker!=null)handler.removeCallbacks(heroTicker);if(heroBatchTicker!=null)handler.removeCallbacks(heroBatchTicker);}
  void checkApkUpdate(){
   if(!FirebaseCatalogSync.configured(this))return;
   pool.execute(()->{
@@ -553,7 +561,7 @@ public class MainActivity extends Activity {
   android.view.ViewGroup.LayoutParams params=grid.getLayoutParams();
   if(params!=null&&params.height!=height){params.height=height;grid.setLayoutParams(params);}
  }
- @Override protected void onResume(){super.onResume();
+ @Override protected void onResume(){super.onResume();handler.removeCallbacks(homeCastStatusUpdater);handler.post(homeCastStatusUpdater);
  if(com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser()==null){
   startActivity(new Intent(this,ProfileActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();return;
  }
@@ -562,4 +570,71 @@ public class MainActivity extends Activity {
  void details(JSONObject o){AdultProtection.require(this,AdultProtection.adult(o),()->{Intent i=new Intent(this,DetailsActivity.class);i.putExtra("item",o.toString());startActivity(i);});}
  void loadCover(String url,ImageView image){if(url.equals(image.getTag()) && image.getDrawable()!=null)return;image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag()))image.setImageBitmap(bitmap);});}}catch(Exception ignored){}});}
  @Override protected void onDestroy(){if(heroTicker!=null)handler.removeCallbacks(heroTicker);if(heroBatchTicker!=null)handler.removeCallbacks(heroBatchTicker);catalogQueries.shutdownNow();pool.shutdownNow();if(accessSubscription!=null)accessSubscription.remove();super.onDestroy();}
+
+
+ private boolean homeCastDialogOpening=false;\n private ImageView homeCastIcon;
+ private boolean homeCastLastConnected=false;
+ private final Runnable homeCastStatusUpdater=new Runnable(){
+  @Override public void run(){
+   if(homeCastIcon==null || isFinishing())return;
+   boolean connected=false;
+   try{
+    com.google.android.gms.cast.framework.CastContext c=com.google.android.gms.cast.framework.CastContext.getSharedInstance(MainActivity.this);
+    com.google.android.gms.cast.framework.CastSession s=c.getSessionManager().getCurrentCastSession();
+    connected=s!=null&&s.isConnected();
+   }catch(Exception ignored){}
+   if(connected!=homeCastLastConnected || homeCastIcon.getTag()==null){
+    homeCastLastConnected=connected;
+    homeCastIcon.setImageResource(connected?R.drawable.ic_cast_conectado:R.drawable.ic_cast_desconectado);
+    homeCastIcon.setContentDescription(connected?"TV conectada. Abrir controles.":"Conectar à TV");
+    homeCastIcon.setTag(Boolean.valueOf(connected));
+   }
+   handler.postDelayed(this,1200);
+  }
+ };
+ private void showHomeCastDevices(){
+  try{
+   com.google.android.gms.cast.framework.CastContext context =
+       com.google.android.gms.cast.framework.CastContext.getSharedInstance(this);
+   com.google.android.gms.cast.framework.CastSession current =
+       context.getSessionManager().getCurrentCastSession();
+   if(current!=null && current.isConnected()){
+    String device=current.getCastDevice()!=null?current.getCastDevice().getFriendlyName():"TV";
+    new AlertDialog.Builder(this).setTitle("TV conectada")
+      .setMessage("Conectado a "+device+". Ao abrir um conteúdo compatível, ele será enviado para a TV.")
+      .setPositiveButton("OK",null)
+      .setNegativeButton("Desconectar",(dialog,which)->context.getSessionManager().endCurrentSession(true))
+      .show();
+    return;
+   }
+   androidx.mediarouter.media.MediaRouter router=androidx.mediarouter.media.MediaRouter.getInstance(this);
+   androidx.mediarouter.media.MediaRouteSelector selector=context.getMergedSelector();
+   ArrayList<androidx.mediarouter.media.MediaRouter.RouteInfo> routes=new ArrayList<>();
+   ArrayList<String> names=new ArrayList<>();
+   for(androidx.mediarouter.media.MediaRouter.RouteInfo route:router.getRoutes()){
+    if(route.isEnabled()&&!route.isDefault()&&route.matchesSelector(selector)){
+     routes.add(route);names.add(String.valueOf(route.getName()));
+    }
+   }
+   if(routes.isEmpty()){
+    new AlertDialog.Builder(this).setTitle("Google Cast")
+      .setMessage("Nenhuma TV encontrada. Confirme que o Chromecast está ligado e na mesma rede Wi-Fi.")
+      .setPositiveButton("OK",null).show();
+    return;
+   }
+   new AlertDialog.Builder(this).setTitle("Conectar à TV")
+     .setItems(names.toArray(new String[0]),(dialog,which)->{
+      try{routes.get(which).select();}
+      catch(Exception e){
+       android.util.Log.e("ReelSeriesCast","Erro ao conectar à TV",e);
+       Toast.makeText(this,"Não foi possível conectar à TV.",Toast.LENGTH_LONG).show();
+      }
+     }).setNegativeButton("Cancelar",null).show();
+  }catch(Exception e){
+   android.util.Log.e("ReelSeriesCast","Falha no botão Cast inicial",e);
+   new AlertDialog.Builder(this).setTitle("Google Cast")
+     .setMessage("Não foi possível abrir a conexão com a TV. "+e.getClass().getSimpleName())
+     .setPositiveButton("OK",null).show();
+  }
+ }
 }
