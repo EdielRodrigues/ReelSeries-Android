@@ -80,9 +80,19 @@ public class DetailsActivity extends Activity {
      seasons.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> p){}public void onItemSelected(android.widget.AdapterView<?> p,View v,int index,long id){episodes.removeAllViews();episodeRefreshers.clear();if(index>=keys.size())return;for(java.util.Map.Entry<Integer,JSONObject> entry:grouped.get(keys.get(index)).entrySet()){
       JSONObject item=entry.getValue();String epUrl=LocalCatalog.first(item,"url","video","link","stream","stream_url","video_url");
       LinearLayout line=new LinearLayout(DetailsActivity.this);line.setGravity(Gravity.CENTER_VERTICAL);line.setBackground(round(0xff202027,12));
-      TextView row=text("▶  Episódio "+entry.getKey(),16,0xffffffff);row.setPadding(dp(14),dp(12),dp(4),dp(12));line.addView(row,new LinearLayout.LayoutParams(0,-2,1));
+      LinearLayout info=new LinearLayout(DetailsActivity.this);info.setOrientation(1);info.setPadding(dp(14),dp(9),dp(4),dp(9));line.addView(info,new LinearLayout.LayoutParams(0,-2,1));
+      TextView row=text("▶  Episódio "+entry.getKey(),16,0xffffffff);info.addView(row);
+      android.widget.ProgressBar episodeBar=new android.widget.ProgressBar(DetailsActivity.this,null,android.R.attr.progressBarStyleHorizontal);
+      episodeBar.setMax(100);episodeBar.setProgressTintList(android.content.res.ColorStateList.valueOf(0xffe63946));
+      episodeBar.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff42424a));
+      LinearLayout.LayoutParams barParams=new LinearLayout.LayoutParams(-1,dp(4));barParams.topMargin=dp(7);info.addView(episodeBar,barParams);
+      TextView episodeStatus=text("",11,0xffaab6c8);LinearLayout.LayoutParams statusParams=new LinearLayout.LayoutParams(-1,-2);statusParams.topMargin=dp(4);info.addView(episodeStatus,statusParams);
       TextView mark=text("",12,0xff9ca3af);mark.setGravity(Gravity.CENTER);mark.setPadding(dp(7),dp(10),dp(7),dp(10));line.addView(mark,new LinearLayout.LayoutParams(dp(110),-2));
-      Runnable refresh=()->{boolean done=EpisodeWatchState.isWatched(DetailsActivity.this,epUrl);mark.setText(done?"✓ Assistido":"○ Marcar");mark.setTextColor(done?0xff63e6b0:0xffcbd5e1);};episodeRefreshers.add(refresh);refresh.run();
+      Runnable refresh=()->{boolean done=EpisodeWatchState.isWatched(DetailsActivity.this,epUrl);int percent=EpisodeWatchState.percent(DetailsActivity.this,epUrl);
+       episodeBar.setProgress(percent);episodeBar.setVisibility(percent>0?View.VISIBLE:View.GONE);
+       episodeStatus.setText(done?"✓ Assistido":percent>0?"Assistindo • "+percent+"%":"Não iniciado");
+       episodeStatus.setTextColor(done?0xff63e6b0:0xffaab6c8);
+       mark.setText(done?"✓ Assistido":"○ Marcar");mark.setTextColor(done?0xff63e6b0:0xffcbd5e1);};episodeRefreshers.add(refresh);refresh.run();
       mark.setOnClickListener(clickedView->{EpisodeWatchState.setWatched(DetailsActivity.this,epUrl,!EpisodeWatchState.isWatched(DetailsActivity.this,epUrl));refresh.run();});
       LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(9);episodes.addView(line,lp);row.setOnClickListener(x->{String url=LocalCatalog.first(item,"url","video","link","stream","stream_url","video_url");if(!url.startsWith("http")){new AlertDialog.Builder(DetailsActivity.this).setMessage("Vídeo indisponível neste episódio.").setPositiveButton("OK",null).show();return;}Intent intent=new Intent(DetailsActivity.this,PlayerActivity.class);intent.putExtra("url",url);intent.putExtra("name",SeriesHelper.name(item)+" • T"+keys.get(index)+" E"+entry.getKey());intent.putExtra("capa",item.optString("capa",selected.optString("capa","")));
       intent.putExtra("adult",AdultProtection.adult(selected)||AdultProtection.adult(item));attachPlaylist(intent,url);

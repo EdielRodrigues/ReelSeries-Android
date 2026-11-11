@@ -92,7 +92,7 @@ public class PlayerActivity extends Activity {
       if(tvSeek!=null&&!seekingTv){tvSeek.setMax(1000);tvSeek.setProgress(duration>0?(int)Math.min(1000,pos*1000/duration):0);}
       if(tvTime!=null)tvTime.setText(formatTime(pos)+" / "+formatTime(duration));
       if(tvEpisodeTitle!=null)tvEpisodeTitle.setText(displayName);
-      if(pos>=5000 && pos%10000<1100)saveHistory(pos,duration);
+      if(pos>=5000 && pos%10000<1100){saveHistory(pos,duration);EpisodeWatchState.saveProgress(PlayerActivity.this,url,pos,duration);}
       if(duration>=60000 && pos>=duration*95/100)EpisodeWatchState.setWatched(PlayerActivity.this,url,true);
       if(duration>10000 && pos>=duration-1700 && r.isPlaying() && playlist!=null && playlistIndex>=0 && playlistIndex+1<playlist.length() && lastAutoIndex!=playlistIndex){
        nearEndChecks++;if(nearEndChecks>=2){lastAutoIndex=playlistIndex;nearEndChecks=0;markComplete();playNext();}
@@ -150,9 +150,9 @@ public class PlayerActivity extends Activity {
  private void saveProgress(){if(player==null||url==null||isXtreamLive(url))return;long duration=player.getDuration(),pos=player.getCurrentPosition();if(pos<2000)return;
   if(duration>0&&pos>=duration-15000){markComplete();return;}
   if(duration>=60000 && pos>=duration*95/100)EpisodeWatchState.setWatched(PlayerActivity.this,url,true);
-  saveHistory(pos,duration);
+  saveHistory(pos,duration);EpisodeWatchState.saveProgress(this,url,pos,duration);
   UserMediaState.prefs(this,"reel_playback_progress").edit().putLong(progressKey(url),pos).apply();}
- private void markComplete(){if(url!=null){EpisodeWatchState.setWatched(this,url,true);UserMediaState.prefs(this,"reel_playback_progress").edit().remove(progressKey(url)).apply();UserMediaState.prefs(this,"reel_continue_history").edit().remove(progressKey(url)).apply();}}
+ private void markComplete(){if(url!=null){EpisodeWatchState.setWatched(this,url,true);EpisodeWatchState.clearProgress(this,url);UserMediaState.prefs(this,"reel_playback_progress").edit().remove(progressKey(url)).apply();UserMediaState.prefs(this,"reel_continue_history").edit().remove(progressKey(url)).apply();}}
  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(0xff000000);getWindow().setNavigationBarColor(0xff000000);getWindow().getDecorView().setSystemUiVisibility(4|1024|4096);setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
  displayName=getIntent().getStringExtra("name");if(displayName==null)displayName="Reel Séries";posterUrl=getIntent().getStringExtra("capa");if(posterUrl==null)posterUrl="";
  url=getIntent().getStringExtra("url");if(url==null||!url.startsWith("http")){finish();return;}
@@ -657,7 +657,7 @@ player=newConfiguredPlayer();playerView.setPlayer(player);
     String json=new org.json.JSONTokener(result).nextValue().toString();
     if(json.startsWith("{")){JSONObject data=new JSONObject(json);long pos=data.optLong("p",0),dur=data.optLong("d",0);
      if(pos>2000&&dur>0&&!isXtreamLive(url)){
-      UserMediaState.prefs(PlayerActivity.this,"reel_playback_progress").edit().putLong(progressKey(url),pos).apply();saveHistory(pos,dur);
+      UserMediaState.prefs(PlayerActivity.this,"reel_playback_progress").edit().putLong(progressKey(url),pos).apply();saveHistory(pos,dur);EpisodeWatchState.saveProgress(PlayerActivity.this,url,pos,dur);
      }
     }
    }catch(Exception ignored){}
