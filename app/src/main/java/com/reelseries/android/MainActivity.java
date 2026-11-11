@@ -572,7 +572,8 @@ public class MainActivity extends Activity {
  @Override protected void onDestroy(){if(heroTicker!=null)handler.removeCallbacks(heroTicker);if(heroBatchTicker!=null)handler.removeCallbacks(heroBatchTicker);catalogQueries.shutdownNow();pool.shutdownNow();if(accessSubscription!=null)accessSubscription.remove();super.onDestroy();}
 
 
- private boolean homeCastDialogOpening=false;\n private ImageView homeCastIcon;
+ private boolean homeCastDialogOpening=false;
+ private ImageView homeCastIcon;
  private boolean homeCastLastConnected=false;
  private final Runnable homeCastStatusUpdater=new Runnable(){
   @Override public void run(){
