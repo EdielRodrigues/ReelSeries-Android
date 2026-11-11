@@ -2,7 +2,7 @@ plugins { id("com.android.application"); id("com.google.gms.google-services") }
 android {
  namespace = "com.reelseries.android"
  compileSdk = 35
- defaultConfig { applicationId = "com.reelseries.android"; minSdk = 24; targetSdk = 35; versionCode = 1000030; versionName = "22.4" }
+ defaultConfig { applicationId = "com.reelseries.android"; minSdk = 24; targetSdk = 35; versionCode = 1000031; versionName = "22.5" }
  signingConfigs {
   getByName("debug") {
    storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
@@ -23,6 +23,7 @@ dependencies {
  implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
  implementation("com.google.firebase:firebase-auth")
  implementation("com.google.firebase:firebase-firestore")
+ implementation("com.google.firebase:firebase-storage")
  implementation("androidx.media3:media3-exoplayer:1.5.1")
  implementation("androidx.media3:media3-exoplayer-hls:1.5.1")
  implementation("androidx.media3:media3-ui:1.5.1")
