@@ -11,7 +11,8 @@ public class ProfileActivity extends Activity {
  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(52));lp.bottomMargin=dp(9);
  root.addView(b,lp);b.setOnClickListener(click);
 }
- @Override public void onCreate(Bundle b){super.onCreate(b);auth=FirebaseAuth.getInstance();db=FirebaseFirestore.getInstance();getWindow().setStatusBarColor(bg);ScrollView scroll=new ScrollView(this);root=new LinearLayout(this);root.setOrientation(1);root.setPadding(dp(22),dp(18),dp(22),dp(28));root.setBackgroundColor(bg);scroll.addView(root);setContentView(scroll);render();}
+ @Override public void onCreate(Bundle b){super.onCreate(b);auth=FirebaseAuth.getInstance();db=FirebaseFirestore.getInstance();getWindow().setStatusBarColor(bg);ScrollView scroll=new ScrollView(this);root=new LinearLayout(this);root.setOrientation(1);root.setPadding(dp(22),dp(18),dp(22),dp(28));root.setBackgroundColor(bg);scroll.addView(root);setContentView(scroll);render();ApkUpdateChecker.check(this);}
+ @Override protected void onResume(){super.onResume();ApkUpdateChecker.check(this);}
  void registerProfile(FirebaseUser user){
   if(user==null)return;
   java.util.Map<String,Object> data=new java.util.HashMap<>();

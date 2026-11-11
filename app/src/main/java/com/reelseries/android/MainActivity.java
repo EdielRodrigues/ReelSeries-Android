@@ -53,10 +53,11 @@ public class MainActivity extends Activity {
  int bg=Color.rgb(10,10,13), fg=Color.WHITE; final ArrayList<String> catNames=new ArrayList<>();
  int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
  @Override public void onCreate(Bundle b){super.onCreate(b);
+ checkApkUpdate();
  if(com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser()==null){
   startActivity(new Intent(this,ProfileActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();return;
  }
- checkApkUpdate();getWindow().setStatusBarColor(bg);getWindow().setNavigationBarColor(0xff0b0b0e);
+ getWindow().setStatusBarColor(bg);getWindow().setNavigationBarColor(0xff0b0b0e);
  LinearLayout layout=new LinearLayout(this);layout.setOrientation(1);layout.setBackgroundColor(bg);
  LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setPadding(dp(12),dp(8),dp(12),dp(8));layout.addView(header);
  TextView menu=navText("☰",25);header.addView(menu,new LinearLayout.LayoutParams(dp(39),dp(48)));menu.setOnClickListener(v->showChannelSidebar());
@@ -195,45 +196,7 @@ public class MainActivity extends Activity {
   handler.postDelayed(heroBatchTicker,Math.max(1000L,next-System.currentTimeMillis()+200L));
  }
  @Override protected void onPause(){handler.removeCallbacks(homeCastStatusUpdater);super.onPause();heroActive=false;if(heroTicker!=null)handler.removeCallbacks(heroTicker);if(heroBatchTicker!=null)handler.removeCallbacks(heroBatchTicker);}
- void checkApkUpdate(){
-  if(!FirebaseCatalogSync.configured(this))return;
-  pool.execute(()->{
-   try{
-    JSONObject release=FirebaseCatalogSync.apkRelease(this);
-    int next=release.optInt("versionCode",0);String link=release.optString("url","");
-    int installed=getPackageManager().getPackageInfo(getPackageName(),0).versionCode;
-    if(next<=installed||!link.startsWith("https://"))return;
-    runOnUiThread(()->{
-     if(isFinishing())return;
-      android.widget.LinearLayout updateContent=new android.widget.LinearLayout(this);
-      updateContent.setOrientation(android.widget.LinearLayout.VERTICAL);
-      int updatePad=(int)(16*getResources().getDisplayMetrics().density);
-      updateContent.setPadding(updatePad,updatePad,updatePad,updatePad);
-      android.widget.ImageView updateArtwork=new android.widget.ImageView(this);
-      updateArtwork.setImageResource(R.drawable.reelseries_update_art);
-      updateArtwork.setAdjustViewBounds(true);
-      updateArtwork.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
-      updateContent.addView(updateArtwork,new android.widget.LinearLayout.LayoutParams(-1,(int)(240*getResources().getDisplayMetrics().density)));
-      android.widget.TextView updateDescription=new android.widget.TextView(this);
-      updateDescription.setText("Nova versão do Reel Séries disponível (código "+next+"). Toque em Atualizar para baixar o APK. A instalação mantém o aplicativo existente se a assinatura digital for a mesma.");
-      updateDescription.setTextSize(15);
-      updateDescription.setPadding(0,updatePad,0,0);
-      updateContent.addView(updateDescription);
-     new AlertDialog.Builder(this).setTitle("Atualização disponível")
-       .setView(updateContent)
-      .setNegativeButton("Depois",null).setPositiveButton("Atualizar",(d,w)->{
-       try{android.app.DownloadManager.Request req=new android.app.DownloadManager.Request(android.net.Uri.parse(link));
-        req.setTitle("Atualização Reel Séries");req.setDescription("Toque no download concluído para instalar o APK");
-        req.setMimeType("application/vnd.android.package-archive");
-        req.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-        ((android.app.DownloadManager)getSystemService(DOWNLOAD_SERVICE)).enqueue(req);
-        Toast.makeText(this,"Baixando APK. Abra a notificação para instalar.",Toast.LENGTH_LONG).show();
-       }catch(Exception e){new AlertDialog.Builder(this).setMessage("Falha ao baixar: "+e.getMessage()).setPositiveButton("OK",null).show();}
-      }).show();
-    });
-   }catch(Exception e){android.util.Log.w("ReelSeriesUpdate","Não foi possível consultar atualização",e);}
-  });
- }
+ void checkApkUpdate(){ApkUpdateChecker.check(this);}
  void refreshContinueCards(LinearLayout section,LinearLayout cards){
   cards.removeAllViews();
   ArrayList<JSONObject> recent=new ArrayList<>();
@@ -539,7 +502,7 @@ public class MainActivity extends Activity {
   android.view.ViewGroup.LayoutParams params=grid.getLayoutParams();
   if(params!=null&&params.height!=height){params.height=height;grid.setLayoutParams(params);}
  }
- @Override protected void onResume(){super.onResume();handler.removeCallbacks(homeCastStatusUpdater);handler.post(homeCastStatusUpdater);
+ @Override protected void onResume(){super.onResume();checkApkUpdate();handler.removeCallbacks(homeCastStatusUpdater);handler.post(homeCastStatusUpdater);
  if(com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser()==null){
   startActivity(new Intent(this,ProfileActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();return;
  }
