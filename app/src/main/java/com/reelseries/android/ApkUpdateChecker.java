@@ -19,7 +19,7 @@ public final class ApkUpdateChecker {
   if(activity==null||activity.isFinishing()||!FirebaseCatalogSync.configured(activity))return;
   synchronized(ApkUpdateChecker.class){
    long now=System.currentTimeMillis();
-   if(busy||now-lastCheck<30000L)return;
+   if(busy||now-lastCheck<5000L)return;
    busy=true;lastCheck=now;
   }
   executor.execute(()->{
@@ -29,9 +29,10 @@ public final class ApkUpdateChecker {
     String url=release.optString("url","").trim();
     int installed=activity.getPackageManager().getPackageInfo(activity.getPackageName(),0).versionCode;
     if(latest<=installed||!url.startsWith("https://"))return;
-    synchronized(ApkUpdateChecker.class){if(lastDialogVersion==latest)return;lastDialogVersion=latest;}
+    synchronized(ApkUpdateChecker.class){if(lastDialogVersion==latest)return;}
     activity.runOnUiThread(()->{
      if(activity.isFinishing()||activity.isDestroyed())return;
+     synchronized(ApkUpdateChecker.class){if(lastDialogVersion==latest)return;lastDialogVersion=latest;}
      LinearLayout body=new LinearLayout(activity);body.setOrientation(LinearLayout.VERTICAL);
      int pad=(int)(16*activity.getResources().getDisplayMetrics().density);
      body.setPadding(pad,pad,pad,pad);
@@ -42,7 +43,7 @@ public final class ApkUpdateChecker {
      description.setText("Nova versão disponível (código "+latest+"). Atualize o Reel Séries para continuar com a versão mais recente.");
      description.setTextSize(15);description.setPadding(0,pad,0,0);body.addView(description);
      new AlertDialog.Builder(activity).setTitle("Atualização do Reel Séries")
-      .setView(body).setNegativeButton("Depois",(dialog,which)->{})
+      .setView(body).setNegativeButton("Depois",(dialog,which)->{synchronized(ApkUpdateChecker.class){lastDialogVersion=0;}})
       .setPositiveButton("Atualizar agora",(dialog,which)->{
        try{
         DownloadManager.Request request=new DownloadManager.Request(Uri.parse(url));
@@ -55,7 +56,10 @@ public final class ApkUpdateChecker {
        }catch(Exception e){new AlertDialog.Builder(activity).setMessage("Não foi possível baixar: "+e.getMessage()).setPositiveButton("OK",null).show();}
       }).show();
     });
-   }catch(Exception e){android.util.Log.e("ReelSeriesUpdate","Falha na consulta pública ao Firebase; verifique regras de leitura de catalogo_unico/meta/apk_update",e);}
+   }catch(Exception e){
+    android.util.Log.e("ReelSeriesUpdate","Falha na consulta ao Firebase: catalogo_unico/meta/apk_update",e);
+    activity.runOnUiThread(()->{if(!activity.isFinishing()&&!activity.isDestroyed())Toast.makeText(activity,"Falha ao verificar atualização: "+e.getMessage(),Toast.LENGTH_LONG).show();});
+   }
    finally{synchronized(ApkUpdateChecker.class){busy=false;}}
   });
  }

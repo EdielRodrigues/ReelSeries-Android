@@ -192,7 +192,14 @@ public final class FirebaseCatalogSync {
   request(endpoint(ctx,"meta/apk_update",token),"PUT",info.toString());
  }
  public static JSONObject apkRelease(Context ctx)throws Exception{
-  String response=request(endpoint(ctx,"meta/apk_update",null),"GET",null);
+  String response;
+  try{response=request(endpoint(ctx,"meta/apk_update",null),"GET",null);}
+  catch(IOException publicError){
+   com.google.firebase.auth.FirebaseUser user=com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
+   if(user==null)throw publicError;
+   com.google.firebase.auth.GetTokenResult token=com.google.android.gms.tasks.Tasks.await(user.getIdToken(false),15,java.util.concurrent.TimeUnit.SECONDS);
+   response=request(endpoint(ctx,"meta/apk_update",token.getToken()),"GET",null);
+  }
   return response.equals("null")?new JSONObject():new JSONObject(response);
  }
  /** Version marker: updated only after an administrator successfully changes cloud data. */
