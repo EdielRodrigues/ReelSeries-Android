@@ -437,6 +437,7 @@ public class MainActivity extends Activity {
       for(int i=0;i<items.length();i++){JSONObject item=items.optJSONObject(i);if(item!=null)page.add(item);}
       hasNext=saved.optBoolean("next",false);
      }else{
+      boolean finished=false;
       // Paginação sobre títulos visíveis e únicos, não sobre linhas brutas
       // (um servidor pode cadastrar milhares de episódios com a mesma série).
       try(LocalCatalog db=new LocalCatalog(this)){
@@ -444,7 +445,6 @@ public class MainActivity extends Activity {
        java.util.HashSet<String> uniqueSeries=new java.util.HashSet<>();
        int matched=0,scanOffset=0;
        final int chunk=400;
-       boolean finished=false;
        while(!finished){
         ArrayList<JSONObject> batch=groupFilter.isEmpty()
          ?db.feed(q,m,cat,scanOffset,chunk)
