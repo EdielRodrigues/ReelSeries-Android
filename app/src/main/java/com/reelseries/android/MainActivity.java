@@ -58,10 +58,22 @@ public class MainActivity extends Activity {
   startActivity(new Intent(this,ProfileActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();return;
  }
  getWindow().setStatusBarColor(bg);getWindow().setNavigationBarColor(0xff0b0b0e);
+ // Aplicar as margens reais das barras do Android (inclusive recortes de tela).
+ androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(),false);
  LinearLayout layout=new LinearLayout(this);layout.setOrientation(1);layout.setBackgroundColor(bg);
+ androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(layout,(view,insets)->{
+  androidx.core.graphics.Insets bars=insets.getInsets(
+   androidx.core.view.WindowInsetsCompat.Type.systemBars() |
+   androidx.core.view.WindowInsetsCompat.Type.displayCutout());
+  view.setPadding(bars.left,bars.top,bars.right,bars.bottom);
+  return insets;
+ });
+ androidx.core.view.ViewCompat.requestApplyInsets(layout);
+ int screenDp=(int)(getResources().getDisplayMetrics().widthPixels/getResources().getDisplayMetrics().density);
+ int headerIconDp=screenDp<370?34:39;
  LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setPadding(dp(12),dp(8),dp(12),dp(8));layout.addView(header);
- TextView menu=navText("☰",25);header.addView(menu,new LinearLayout.LayoutParams(dp(39),dp(48)));menu.setOnClickListener(v->showChannelSidebar());
- TextView brand=navText("REEL  SÉRIES",19);brand.setSingleLine(true);brand.setEllipsize(android.text.TextUtils.TruncateAt.END);brand.setGravity(Gravity.CENTER_VERTICAL);brand.setTextColor(0xfff04458);brand.setTypeface(null,1);header.addView(brand,new LinearLayout.LayoutParams(0,dp(48),1));
+ TextView menu=navText("☰",25);header.addView(menu,new LinearLayout.LayoutParams(dp(headerIconDp),dp(48)));menu.setOnClickListener(v->showChannelSidebar());
+ TextView brand=navText("REEL  SÉRIES",screenDp<370?16:19);brand.setSingleLine(true);brand.setEllipsize(android.text.TextUtils.TruncateAt.END);brand.setGravity(Gravity.CENTER_VERTICAL);brand.setTextColor(0xfff04458);brand.setTypeface(null,1);header.addView(brand,new LinearLayout.LayoutParams(0,dp(48),1));
  homeCastIcon=new ImageView(this);
  ImageView homeCast=homeCastIcon;
  homeCast.setImageResource(R.drawable.ic_cast_desconectado);
@@ -75,10 +87,10 @@ public class MainActivity extends Activity {
   handler.postDelayed(()->homeCastDialogOpening=false,900);
   showHomeCastDevices();
  });
- header.addView(homeCast,new LinearLayout.LayoutParams(dp(39),dp(48)));
- TextView searchIcon=navText("⌕",30);header.addView(searchIcon,new LinearLayout.LayoutParams(dp(39),dp(48)));searchIcon.setOnClickListener(v->{search.requestFocus();((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(search,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});
- TextView profile=navText("◉",24);header.addView(profile,new LinearLayout.LayoutParams(dp(39),dp(48)));profile.setOnClickListener(v->startActivity(new Intent(this,ProfileActivity.class)));
- TextView admin=navText("⚙",22);header.addView(admin,new LinearLayout.LayoutParams(dp(39),dp(48)));admin.setOnClickListener(v->startActivity(new Intent(this,AdminActivity.class)));
+ header.addView(homeCast,new LinearLayout.LayoutParams(dp(headerIconDp),dp(48)));
+ TextView searchIcon=navText("⌕",30);header.addView(searchIcon,new LinearLayout.LayoutParams(dp(headerIconDp),dp(48)));searchIcon.setOnClickListener(v->{search.requestFocus();((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(search,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});
+ TextView profile=navText("◉",24);header.addView(profile,new LinearLayout.LayoutParams(dp(headerIconDp),dp(48)));profile.setOnClickListener(v->startActivity(new Intent(this,ProfileActivity.class)));
+ TextView admin=navText("⚙",22);header.addView(admin,new LinearLayout.LayoutParams(dp(headerIconDp),dp(48)));admin.setOnClickListener(v->startActivity(new Intent(this,AdminActivity.class)));
  androidx.swiperefreshlayout.widget.SwipeRefreshLayout swipe=new androidx.swiperefreshlayout.widget.SwipeRefreshLayout(this);
  swipe.setColorSchemeColors(0xffef4356);swipe.setProgressBackgroundColorSchemeColor(0xff202027);
  layout.addView(swipe,new LinearLayout.LayoutParams(-1,0,1));

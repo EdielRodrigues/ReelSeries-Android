@@ -86,7 +86,14 @@ public final class FirebaseCatalogSync {
  /** Lists direct child keys without downloading the full catalog. */
  public static java.util.ArrayList<String> listFolders(Context ctx,String path,String token)throws Exception{
   validatePath(path);
-  String node=path.isEmpty()?"/":"/"+encodedPath(path);
+  // A raiz do RTDB nao e legivel pelas regras: liste apenas os nos conhecidos.
+  if(path.isEmpty()){
+   java.util.ArrayList<String> roots=new java.util.ArrayList<>();
+   java.util.Collections.addAll(roots,"catalogo_1_series","catalogo_2_filmes",
+    "catalogo_3_iptv","catalogo_unico","atualizacoes","config","__meta");
+   return roots;
+  }
+  String node="/"+encodedPath(path);
   // For the root this MUST be /.json, not .com.json.
   String address=base(ctx)+node+".json?shallow=true"+(token==null||token.isEmpty()?"":"&auth="+URLEncoder.encode(token,"UTF-8"));
   String body=request(address,"GET",null);

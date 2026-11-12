@@ -918,7 +918,7 @@ public class AdminActivity extends Activity {
     runOnUiThread(()->{
      if(isFinishing()||navigationId!=folderNavigationId)return;
      msg("Pasta: /"+path+" • "+total+" itens • exibindo "+(total==0?0:from+1)+"–"+to+". Exclusão progressiva de registros grandes.");
-     if(!path.isEmpty()&&!path.equals("catalogo_unico")&&!path.equals("catalogo_unico/meta")&&!path.equals("__meta")&&!path.equals("admins")&&!path.equals("config"))button("⚠ Excluir esta pasta",()->confirmDeleteFolder(path));
+     if(!path.isEmpty()&&!path.equals("catalogo_unico")&&!path.equals("catalogo_unico/meta")&&!path.equals("atualizacoes")&&!path.equals("atualizacoes/apk_update")&&!path.equals("__meta")&&!path.equals("admins")&&!path.equals("config"))button("⚠ Excluir esta pasta",()->confirmDeleteFolder(path));
      for(String key:visible){String child=path.isEmpty()?key:path+"/"+key;button("▣ "+key,()->browseFirebaseFolders(child));}
      if(from>0)button("← Página anterior",()->browseFirebaseFolders(path,Math.max(0,from-FIREBASE_PAGE_SIZE)));
      if(to<total)button("Próxima página →",()->browseFirebaseFolders(path,to));
@@ -961,7 +961,7 @@ public class AdminActivity extends Activity {
  private void confirmDeleteFolder(String path){
   if(!authorized||busy)return;
   // Pastas do sistema e a raiz continuam protegidas contra exclusao acidental.
-  if(path.isEmpty()||path.equals("catalogo_unico")||path.equals("catalogo_unico/meta")||
+  if(path.isEmpty()||path.equals("catalogo_unico")||path.equals("catalogo_unico/meta")||path.equals("atualizacoes")||path.equals("atualizacoes/apk_update")||
      path.equals("__meta")||path.equals("admins")||path.equals("config")){
    msg("Esta pasta contém dados do sistema e não pode ser excluída.");return;
   }
