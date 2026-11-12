@@ -16,7 +16,7 @@ public final class FirebaseCatalogSync {
  public interface Failed {void accept(String error);}
  public static void withToken(FirebaseAuth auth,Done done,Failed fail){
   if(auth.getCurrentUser()==null){fail.accept("Faça login como administrador");return;}
-  auth.getCurrentUser().getIdToken(false).addOnSuccessListener(t->done.accept(t.getToken())).addOnFailureListener(e->fail.accept(e.getMessage()));
+  auth.getCurrentUser().getIdToken(true).addOnSuccessListener(t->done.accept(t.getToken())).addOnFailureListener(e->fail.accept(e.getMessage()));
  }
  private static String base(Context ctx)throws IOException {
   // Use the confirmed Realtime Database instance; never append .json to the host.
@@ -30,7 +30,7 @@ public final class FirebaseCatalogSync {
    if(payload!=null){conn.setDoOutput(true);conn.setRequestProperty("Content-Type","application/json; charset=utf-8");try(OutputStream out=conn.getOutputStream()){out.write(payload.getBytes("UTF-8"));}}
    int code=conn.getResponseCode();InputStream stream=code>=200&&code<300?conn.getInputStream():conn.getErrorStream();
    ByteArrayOutputStream out=new ByteArrayOutputStream();if(stream!=null)try(InputStream in=stream){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1){out.write(b,0,n);if(out.size()>10*1024*1024)throw new IOException("Resposta Firebase grande demais");}}
-   String result=out.toString("UTF-8");if(code<200||code>=300)throw new IOException("HTTP "+code+" Firebase: "+result.substring(0,Math.min(180,result.length())));
+   String result=out.toString("UTF-8");if(code<200||code>=300)throw new IOException("HTTP "+code+" Firebase ["+new URL(address).getPath()+"]: "+result.substring(0,Math.min(180,result.length())));
    return result;
   }finally{conn.disconnect();}
  }
@@ -58,7 +58,7 @@ public final class FirebaseCatalogSync {
  public static int upload(Context ctx,LocalCatalog db,String origin,String token,LocalCatalog.Progress progress)throws Exception{
   SQLiteDatabase sql=db.getReadableDatabase();int sent=0;String last="";
   while(true){
-   String query="SELECT id,nome,categoria,capa,url,sinopse,grupo,origem,series_id,episode_id,parent_series_id,season_number,episode_number FROM media WHERE id>?"+(origin==null?"":" AND origem=?")+" ORDER BY id LIMIT 50";
+   String query="SELECT id,nome,categoria,capa,url,sinopse,grupo,origem,series_id,episode_id,parent_series_id,season_number,episode_number FROM media WHERE id>?"+(origin==null?"":" AND origem=?")+" ORDER BY id LIMIT 200";
    String[] args=origin==null?new String[]{last}:new String[]{last,origin};
    java.util.LinkedHashMap<String,JSONObject> batches=new java.util.LinkedHashMap<>();int scanned=0;
    try(Cursor c=sql.rawQuery(query,args)){
@@ -73,7 +73,7 @@ public final class FirebaseCatalogSync {
    for(java.util.Map.Entry<String,JSONObject> batch:batches.entrySet())
     request(catalogEndpoint(ctx,batch.getKey(),null,token),"PATCH",batch.getValue().toString());
    sent+=scanned;progress.update(sent);
-   if(scanned<50)break;
+   if(scanned<200)break;
   }
   return sent;
  }
@@ -242,7 +242,7 @@ public final class FirebaseCatalogSync {
   return "";
  }
  private static int downloadFolder(Context ctx,LocalCatalog db,String folder,int count,LocalCatalog.Progress progress)throws Exception{
-  String baseUrl=base(ctx)+"/"+folder+"/items.json?orderBy=%22%24key%22&limitToFirst=101";
+  String baseUrl=base(ctx)+"/"+folder+"/items.json?orderBy=%22%24key%22&limitToFirst=301";
   String last=null;
   for(int pages=0;pages<5000;pages++){
    String u=baseUrl+(last==null?"":"&startAt="+URLEncoder.encode(JSONObject.quote(last),"UTF-8"));
@@ -262,7 +262,7 @@ public final class FirebaseCatalogSync {
     sql.setTransactionSuccessful();
    }finally{sql.endTransaction();}
    String next=keys.get(keys.size()-1);if(next.equals(last))break;last=next;progress.update(count);
-   if(keys.size()<101)break;
+   if(keys.size()<301)break;
   }
   return count;
  }

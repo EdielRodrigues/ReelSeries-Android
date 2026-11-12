@@ -141,6 +141,10 @@ public class MainActivity extends Activity {
  search=new EditText(this);search.setSingleLine(true);search.setHint("Pesquisar filme, série ou episódio");search.setTextColor(fg);search.setHintTextColor(0xff9fa5b3);search.setBackground(rounded(0xff1b1b22,12));search.setPadding(dp(12),0,dp(12),0);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,dp(48));sp.topMargin=dp(20);content.addView(search,sp);
  LinearLayout sort=new LinearLayout(this);sort.setGravity(Gravity.CENTER_VERTICAL);sort.setPadding(0,dp(10),0,0);content.addView(sort);TextView heading=navText("Explore o catálogo",21);heading.setTypeface(null,1);sort.addView(heading,new LinearLayout.LayoutParams(0,-2,1));categories=new Spinner(this);sort.addView(categories,new LinearLayout.LayoutParams(dp(155),dp(48)));catNames.add("Todas");categories.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,catNames));
  status=navText("Carregando catálogo...",12);status.setTextColor(0xffaeb6c7);content.addView(status);
+ cloudProgress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
+ cloudProgress.setIndeterminate(true);cloudProgress.setVisibility(View.GONE);
+ cloudProgress.setProgressTintList(android.content.res.ColorStateList.valueOf(0xffef4356));
+ content.addView(cloudProgress,new LinearLayout.LayoutParams(-1,dp(5)));
  grid=new GridView(this);grid.setNumColumns(3);grid.setVerticalSpacing(dp(12));grid.setHorizontalSpacing(dp(9));grid.setClipToPadding(false);grid.setPadding(0,dp(10),0,dp(12));grid.setNestedScrollingEnabled(true);content.addView(grid,new LinearLayout.LayoutParams(-1,dp(460)));moreButton=actionText("CARREGAR MAIS TÍTULOS  ↓",false);LinearLayout.LayoutParams moreParams=new LinearLayout.LayoutParams(-1,dp(52));moreParams.topMargin=dp(10);LinearLayout pager=new LinearLayout(this);pager.setGravity(Gravity.CENTER_VERTICAL);content.addView(pager,moreParams);
   previousButton=actionText("‹ ANTERIOR",false);pager.addView(previousButton,new LinearLayout.LayoutParams(0,dp(52),1));
   pageLabel=navText("Página 1",12);pageLabel.setGravity(Gravity.CENTER);pager.addView(pageLabel,new LinearLayout.LayoutParams(dp(85),dp(52)));
@@ -271,15 +275,20 @@ public class MainActivity extends Activity {
  }
  // Persistent SQLite cache: check at most once per 24h, never redownload on every open.
  final java.util.concurrent.atomic.AtomicBoolean cloudBusy=new java.util.concurrent.atomic.AtomicBoolean(false);
+ ProgressBar cloudProgress;
  static final long CLOUD_INTERVAL_MS=24L*60*60*1000;
  void loadCloud(){
   if(!FirebaseCatalogSync.configured(this)||!cloudBusy.compareAndSet(false,true))return;
+  runOnUiThread(()->{if(cloudProgress!=null){cloudProgress.setIndeterminate(true);cloudProgress.setProgress(0);cloudProgress.setVisibility(View.VISIBLE);}});
   pool.execute(()->{
    try{
     android.content.SharedPreferences pref=getSharedPreferences("reel_cloud_cache_v194",MODE_PRIVATE);
     long now=System.currentTimeMillis(),last=pref.getLong("last_check",0);
     // Also handle clock changes and future timestamps safely.
-    if(last>0 && now>=last && now-last<CLOUD_INTERVAL_MS)return;
+    if(last>0 && now>=last && now-last<CLOUD_INTERVAL_MS){
+     runOnUiThread(()->{if(status!=null)status.setText("Catálogo já verificado hoje • próxima consulta após 24 horas");});
+     return;
+    }
     String revision=FirebaseCatalogSync.revision(this);
     String previous=pref.getString("revision","");
     // Uma atualização corretiva única reprocessa os campos alternativos de URL.
@@ -305,17 +314,24 @@ public class MainActivity extends Activity {
       invalidateSavedPages();
      // Atualiza o feed; o próximo menu reconstruirá e salvará as pastas uma única vez.
      localCatalogCount=n;resetFeed();
-     if(status!=null)status.setText("Catálogo salvo no celular • "+n+" registros sincronizados");
+     if(status!=null)status.setText("Catálogo salvo no celular • "+n+" registros sincronizados • 100%");
+     if(cloudProgress!=null){cloudProgress.setIndeterminate(false);cloudProgress.setProgress(100);}
     });
    }catch(Exception e){runOnUiThread(()->{if(status!=null)status.setText("Catálogo local disponível • atualização pendente: "+e.getMessage());});}
-   finally{cloudBusy.set(false);}
+   finally{cloudBusy.set(false);runOnUiThread(()->{
+    if(cloudProgress!=null && cloudProgress.isIndeterminate())cloudProgress.setVisibility(View.GONE);
+   });}
   });
  }
 
  void forceCloudUpdate(){
   if(com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser()==null){Toast.makeText(this,"Entre na sua conta para receber atualizações.",Toast.LENGTH_LONG).show();return;}
   if(cloudBusy.get()){Toast.makeText(this,"Atualização já em andamento.",Toast.LENGTH_SHORT).show();return;}
-  getSharedPreferences("reel_cloud_cache_v194",MODE_PRIVATE).edit().remove("last_check").apply();
+  android.content.SharedPreferences cloudPrefs=getSharedPreferences("reel_cloud_cache_v194",MODE_PRIVATE);
+  long last=cloudPrefs.getLong("last_check",0),now=System.currentTimeMillis();
+  if(last>0&&now>=last&&now-last<CLOUD_INTERVAL_MS){
+   Toast.makeText(this,"Catálogo já verificado hoje. Próxima atualização após 24 horas.",Toast.LENGTH_LONG).show();return;
+  }
   Toast.makeText(this,"Buscando atualizações do Firebase...",Toast.LENGTH_SHORT).show();loadCloud();
  }
  // Painel lateral: início, perfil e grupos reais do catálogo IPTV local.
@@ -575,7 +591,7 @@ public class MainActivity extends Activity {
   android.view.ViewGroup.LayoutParams heroLp=featuredHero.getLayoutParams();
   if(heroLp!=null){heroLp.height=Math.max(dp(390),imageHeight+dp(265));featuredHero.setLayoutParams(heroLp);}
  }
- void loadCover(String url,ImageView image){if(url.equals(image.getTag()) && image.getDrawable()!=null)return;image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);fitFeaturedImage(image,hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://")&&!url.startsWith("http://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag())){image.setImageBitmap(bitmap);fitFeaturedImage(image,bitmap);}});}}catch(Exception ignored){}});}
+ void loadCover(String url,ImageView image){if(url.equals(image.getTag()) && image.getDrawable()!=null)return;image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);fitFeaturedImage(image,hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag())){image.setImageBitmap(bitmap);fitFeaturedImage(image,bitmap);}});}}catch(Exception ignored){}});}
  @Override protected void onDestroy(){if(heroTicker!=null)handler.removeCallbacks(heroTicker);if(heroBatchTicker!=null)handler.removeCallbacks(heroBatchTicker);catalogQueries.shutdownNow();pool.shutdownNow();if(accessSubscription!=null)accessSubscription.remove();super.onDestroy();}
 
 
