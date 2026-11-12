@@ -7,14 +7,14 @@ public class DetailsActivity extends Activity {
  TextView back=text("‹  Voltar ao catálogo",17,0xffe5e7eb);root.addView(back);back.setOnClickListener(v->finish());
  // Capa em destaque: mostra a imagem inteira sem recortar as bordas.
  FrameLayout hero=new FrameLayout(this);hero.setBackgroundColor(0xff101015);
- LinearLayout.LayoutParams heroParams=new LinearLayout.LayoutParams(-1,dp(560));heroParams.bottomMargin=dp(12);root.addView(hero,heroParams);
+ LinearLayout.LayoutParams heroParams=new LinearLayout.LayoutParams(-1,dp(850));heroParams.bottomMargin=dp(12);root.addView(hero,heroParams);
  ImageView cover=new ImageView(this);cover.setScaleType(ImageView.ScaleType.FIT_CENTER);cover.setBackgroundColor(0xff101015);
- hero.addView(cover,new FrameLayout.LayoutParams(-1,-1));
- // Degradê escuro para manter os controles legíveis sobre a arte.
+ hero.addView(cover,new FrameLayout.LayoutParams(-1,dp(560),Gravity.TOP));
+ // Degradê escuro atrás dos controles, sem esconder a capa inteira.
  View shade=new View(this);shade.setBackground(new android.graphics.drawable.GradientDrawable(
   android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
   new int[]{0x00101015,0x99101015,0xff0c0c10}));
- FrameLayout.LayoutParams shadeParams=new FrameLayout.LayoutParams(-1,dp(310),Gravity.BOTTOM);hero.addView(shade,shadeParams);
+ FrameLayout.LayoutParams shadeParams=new FrameLayout.LayoutParams(-1,dp(290),Gravity.BOTTOM);hero.addView(shade,shadeParams);
  LinearLayout heroControls=new LinearLayout(this);heroControls.setOrientation(1);heroControls.setPadding(dp(10),0,dp(10),dp(10));
  FrameLayout.LayoutParams controlParams=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);hero.addView(heroControls,controlParams);
  TextView title=text(o.optString("nome","Sem título"),27,0xffffffff);title.setTypeface(null,1);heroControls.addView(title);
@@ -26,7 +26,19 @@ public class DetailsActivity extends Activity {
  root.addView(sectionTitle("Sinopse"));String synopsis=o.optString("sinopse","").trim();root.addView(text(synopsis.isEmpty()?"Sinopse não informada.":synopsis,15,0xffcbd5e1));
  if(SeriesHelper.isSeries(o))showSeasons(root,o);
  root.addView(sectionTitle("Informações"));root.addView(text("Título: "+o.optString("nome")+"\nCategoria: "+o.optString("categoria")+(episode.isEmpty()?"":"\nEpisódio: "+episode)+"\nFonte: catálogo Reel Séries",14,0xff9ca3af));
- String img=o.optString("capa","");if(img.startsWith("https://")){new Thread(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(img).openConnection();c.setConnectTimeout(5000);c.setReadTimeout(5000);BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=2;try(InputStream in=c.getInputStream()){Bitmap bmp=BitmapFactory.decodeStream(in,null,opts);if(bmp!=null)runOnUiThread(()->{if(!isFinishing())cover.setImageBitmap(bmp);});}c.disconnect();}catch(Exception ignored){}}).start();}
+ String img=o.optString("capa","");if(img.startsWith("https://")){new Thread(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(img).openConnection();c.setConnectTimeout(5000);c.setReadTimeout(5000);BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=2;try(InputStream in=c.getInputStream()){Bitmap bmp=BitmapFactory.decodeStream(in,null,opts);if(bmp!=null)runOnUiThread(()->{
+       if(isFinishing())return;
+       cover.setImageBitmap(bmp);
+       // Altura proporcional à capa real: nenhum pedaço fica cortado.
+       int width=hero.getWidth();
+       if(width<=0)width=getResources().getDisplayMetrics().widthPixels-dp(32);
+       int imageHeight=Math.max(dp(240),Math.round((float)width*bmp.getHeight()/bmp.getWidth()));
+       FrameLayout.LayoutParams coverParams=new FrameLayout.LayoutParams(-1,imageHeight,Gravity.TOP);
+       cover.setLayoutParams(coverParams);
+       // Reserva espaço exclusivo para título e botões abaixo da imagem completa.
+       heroParams.height=imageHeight+dp(290);
+       hero.setLayoutParams(heroParams);
+      });}c.disconnect();}catch(Exception ignored){}}).start();}
  }
  private TextView sectionTitle(String name){TextView t=text(name,20,0xffffffff);t.setTypeface(null,1);t.setPadding(0,dp(18),0,dp(12));return t;}
  private android.graphics.drawable.GradientDrawable round(int color,int radius){android.graphics.drawable.GradientDrawable d=new android.graphics.drawable.GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
