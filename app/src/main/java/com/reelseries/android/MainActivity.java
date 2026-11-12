@@ -542,7 +542,7 @@ public class MainActivity extends Activity {
   android.view.ViewGroup.LayoutParams params=grid.getLayoutParams();
   if(params!=null&&params.height!=height){params.height=height;grid.setLayoutParams(params);}
  }
- @Override protected void onResume(){super.onResume();checkApkUpdate();handler.removeCallbacks(homeCastStatusUpdater);handler.post(homeCastStatusUpdater);
+ @Override protected void onResume(){super.onResume();handler.removeCallbacks(homeCastStatusUpdater);handler.post(homeCastStatusUpdater);
  if(com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser()==null){
   startActivity(new Intent(this,ProfileActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();return;
  }
