@@ -233,6 +233,14 @@ public final class FirebaseCatalogSync {
   if(!folder.equals("catalogo_1_series")&&!folder.equals("catalogo_2_filmes")&&!folder.equals("catalogo_3_iptv"))throw new IOException("Catálogo inválido");
   return downloadFolder(ctx,db,folder,0,progress);
  }
+ private static String preferredCover(JSONObject item){
+  // Alguns provedores IPTV publicam a imagem como tvg-logo ou logo, nao capa.
+  for(String key:new String[]{"capa","tvg-logo","tvg_logo","logo","poster","imagem","image","thumbnail","icon"}){
+   String value=item.optString(key,"").trim();
+   if(value.startsWith("https://")||value.startsWith("http://"))return value;
+  }
+  return "";
+ }
  private static int downloadFolder(Context ctx,LocalCatalog db,String folder,int count,LocalCatalog.Progress progress)throws Exception{
   String baseUrl=base(ctx)+"/"+folder+"/items.json?orderBy=%22%24key%22&limitToFirst=101";
   String last=null;
@@ -249,7 +257,7 @@ public final class FirebaseCatalogSync {
      if(incomingUrl.trim().isEmpty())try(Cursor old=sql.rawQuery("SELECT url FROM media WHERE id=?",new String[]{id})){
       if(old.moveToFirst()&&!old.isNull(0))incomingUrl=old.getString(0);
      }
-     db.saveXtream(sql,id,o.optString("nome"),o.optString("categoria"),o.optString("capa"),incomingUrl,o.optString("sinopse"),o.optString("grupo"),o.optString("origem","Firebase"),o.optString("series_id"),o.optString("episode_id"),o.optString("parent_series_id"),o.optInt("season_number"),o.optInt("episode_number"));count++;
+     db.saveXtream(sql,id,o.optString("nome"),o.optString("categoria"),preferredCover(o),incomingUrl,o.optString("sinopse"),o.optString("grupo"),o.optString("origem","Firebase"),o.optString("series_id"),o.optString("episode_id"),o.optString("parent_series_id"),o.optInt("season_number"),o.optInt("episode_number"));count++;
     }
     sql.setTransactionSuccessful();
    }finally{sql.endTransaction();}
