@@ -2,68 +2,36 @@ package com.reelseries.android;
 import android.app.*;import android.os.*;import android.content.*;import android.graphics.Color;import android.view.*;import android.widget.*;
 import com.google.firebase.auth.*;import com.google.firebase.firestore.*;
 public class ProfileActivity extends Activity {
- LinearLayout root; FirebaseAuth auth; FirebaseFirestore db; TextView identity, vip; int bg=0xff0c0c10;
+ LinearLayout root; FirebaseAuth auth; FirebaseFirestore db; TextView identity,vip; int bg=0xff0c0c10;
  int dp(int v){return (int)(v*getResources().getDisplayMetrics().density+.5f);}
  TextView label(String text,int size,int color){TextView t=new TextView(this);t.setText(text);t.setTextSize(size);t.setTextColor(color);t.setPadding(dp(6),dp(12),dp(6),dp(12));return t;}
- void button(String text,View.OnClickListener click){
- Button b=new Button(this);b.setAllCaps(false);b.setText(text);b.setTextSize(16);
- b.setTextColor(Color.WHITE);b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff292932));
- LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(52));lp.bottomMargin=dp(9);
- root.addView(b,lp);b.setOnClickListener(click);
-}
+ void button(String text,View.OnClickListener click){Button b=new Button(this);b.setAllCaps(false);b.setText(text);b.setTextSize(16);b.setTextColor(Color.WHITE);b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff292932));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(52));lp.bottomMargin=dp(9);root.addView(b,lp);b.setOnClickListener(click);}
  @Override public void onCreate(Bundle b){super.onCreate(b);auth=FirebaseAuth.getInstance();db=FirebaseFirestore.getInstance();getWindow().setStatusBarColor(bg);ScrollView scroll=new ScrollView(this);root=new LinearLayout(this);root.setOrientation(1);root.setPadding(dp(22),dp(18),dp(22),dp(28));root.setBackgroundColor(bg);scroll.addView(root);setContentView(scroll);render();ApkUpdateChecker.check(this);}
  @Override protected void onResume(){super.onResume();ApkUpdateChecker.check(this);}
- void registerProfile(FirebaseUser user){
-  if(user==null)return;
-  java.util.Map<String,Object> data=new java.util.HashMap<>();
-  data.put("email",user.getEmail()==null?"":user.getEmail());
-  data.put("uid",user.getUid());
-  data.put("ultimoAcesso",com.google.firebase.firestore.FieldValue.serverTimestamp());
-  db.collection("usuarios").document(user.getUid())
-   .set(data,com.google.firebase.firestore.SetOptions.merge())
-   .addOnFailureListener(e->android.util.Log.w("ReelPerfil","Falha ao registrar perfil",e));
- }
- void showBlocked(){
-  new AlertDialog.Builder(this).setTitle("Acesso bloqueado")
-   .setMessage("Este perfil foi bloqueado pela administração do Reel Séries.")
-   .setCancelable(false).setPositiveButton("Sair da conta",(d,w)->{auth.signOut();finishAffinity();})
-   .show();
- }
+ void registerProfile(FirebaseUser user){if(user==null)return;java.util.Map<String,Object> data=new java.util.HashMap<>();data.put("email",user.getEmail()==null?"":user.getEmail());data.put("uid",user.getUid());data.put("ultimoAcesso",com.google.firebase.firestore.FieldValue.serverTimestamp());db.collection("usuarios").document(user.getUid()).set(data,com.google.firebase.firestore.SetOptions.merge()).addOnFailureListener(e->android.util.Log.w("ReelPerfil","Falha ao registrar perfil",e));}
+ void showBlocked(){new AlertDialog.Builder(this).setTitle("Acesso bloqueado").setMessage("Este perfil foi bloqueado pela administração do Reel Séries.").setCancelable(false).setPositiveButton("Sair da conta",(d,w)->{auth.signOut();finishAffinity();}).show();}
  void render(){root.removeAllViews();TextView title=label("◉  MEU PERFIL",27,0xffef4356);title.setTypeface(null,1);root.addView(title);identity=label("Conta não conectada",17,Color.WHITE);root.addView(identity);vip=label("Assinatura: não verificada",15,0xffb7c2d1);root.addView(vip);
- FirebaseUser user=auth.getCurrentUser();if(user!=null){registerProfile(user);identity.setText(user.getEmail()==null?"Usuário conectado":user.getEmail());db.collection("usuarios").document(user.getUid()).get().addOnSuccessListener(d->{if(isFinishing())return;String name=d.getString("nome");if(name!=null&&!name.isEmpty())identity.setText(name+"\n"+user.getEmail());Boolean active=d.getBoolean("vipAtivo");com.google.firebase.Timestamp until=d.getTimestamp("vipAte");
-boolean valid=Boolean.TRUE.equals(active)&&until!=null&&until.toDate().getTime()>System.currentTimeMillis();
-vip.setText(valid?"VIP ativo até "+new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(until.toDate()):"Assinatura vencida ou não ativa");}).addOnFailureListener(e->vip.setText("Não foi possível consultar a assinatura"));button("Sair da conta",v->{auth.signOut();finishAffinity();});}
+ FirebaseUser user=auth.getCurrentUser();if(user!=null){registerProfile(user);identity.setText(user.getEmail()==null?"Usuário conectado":user.getEmail());db.collection("usuarios").document(user.getUid()).get().addOnSuccessListener(d->{if(isFinishing())return;String name=d.getString("nome");if(name!=null&&!name.isEmpty())identity.setText(name+"\n"+user.getEmail());Boolean active=d.getBoolean("vipAtivo");com.google.firebase.Timestamp until=d.getTimestamp("vipAte");boolean valid=Boolean.TRUE.equals(active)&&until!=null&&until.toDate().getTime()>System.currentTimeMillis();vip.setText(valid?"VIP ativo até "+new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(until.toDate()):"Assinatura vencida ou não ativa");}).addOnFailureListener(e->vip.setText("Não foi possível consultar a assinatura"));button("Sair da conta",v->{auth.signOut();finishAffinity();});}
  else{EditText email=new EditText(this);email.setSingleLine();email.setHint("E-mail");email.setTextColor(-1);email.setHintTextColor(0xffaaaaaa);root.addView(email);EditText pass=new EditText(this);pass.setHint("Senha");pass.setTextColor(-1);pass.setHintTextColor(0xffaaaaaa);pass.setInputType(129);root.addView(pass);TextView msg=label("",13,0xffff8b96);root.addView(msg);button("Entrar",v->auth.signInWithEmailAndPassword(email.getText().toString().trim(),pass.getText().toString()).addOnSuccessListener(r->{render();startActivity(new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();}).addOnFailureListener(e->msg.setText(e.getMessage())));button("Criar conta",v->auth.createUserWithEmailAndPassword(email.getText().toString().trim(),pass.getText().toString()).addOnSuccessListener(r->{render();startActivity(new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();}).addOnFailureListener(e->msg.setText(e.getMessage())));}
- if(user==null)return; // Logged-out visitors may only sign in or create an account.
+ if(user==null)return;
  TextView library=label("MINHA BIBLIOTECA",19,Color.WHITE);library.setTypeface(null,1);root.addView(library);button("♥  Minha lista",v->startActivity(new Intent(this,FavoritesActivity.class)));button("▶  Continuar assistindo",v->startActivity(new Intent(this,ContinueWatchingActivity.class)));button("♛  Minha assinatura",v->new AlertDialog.Builder(this).setMessage(vip.getText()).setPositiveButton("OK",null).show());TextView security=label("SEGURANÇA E PRIVACIDADE",19,Color.WHITE);security.setTypeface(null,1);root.addView(security);
- root.addView(label("Proteja as categorias adultas com um PIN de 4 números. O PIN inicial é 0000. Após alterar, o PIN anterior deixa de funcionar.",14,0xffbfc0ca));
- button("🔒  Alterar PIN de conteúdo adulto",v->AdultProtection.changePin(this));
- button("🔐  Bloquear conteúdo adulto agora",v->{AdultProtection.lock();Toast.makeText(this,"Conteúdo adulto bloqueado.",Toast.LENGTH_SHORT).show();});
- button("⚙  Configurações",v->new AlertDialog.Builder(this).setItems(new String[]{"Sobre o aplicativo","Voltar"},(d,w)->{if(w==0)new AlertDialog.Builder(this).setMessage("Reel Séries Android 19.5").setPositiveButton("OK",null).show();}).show());button("🛡  Administração",v->startActivity(new Intent(this,AdminActivity.class)));showSubscriptionCard();}
-
- private void showSubscriptionCard(){
-  LinearLayout card=new LinearLayout(this);card.setOrientation(1);card.setPadding(dp(16),dp(12),dp(16),dp(16));
-  android.graphics.drawable.GradientDrawable bgCard=new android.graphics.drawable.GradientDrawable();bgCard.setColor(0xff202c40);bgCard.setCornerRadius(dp(18));card.setBackground(bgCard);
-  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(18);root.addView(card,lp);
-  TextView title=label("●  MINHA ASSINATURA",18,0xffff667b);title.setTypeface(null,1);card.addView(title);
-  FirebaseUser user=auth.getCurrentUser();if(user==null)return;
-  card.addView(label("E-mail: "+(user.getEmail()==null?"Não informado":user.getEmail()),14,0xffe4eaf4));
-  TextView due=label("Vencimento: consultando...",17,Color.WHITE);due.setTypeface(null,1);card.addView(due);
-  TextView state=label("Consultando assinatura...",14,0xffffb86c);card.addView(state);
-  db.collection("usuarios").document(user.getUid()).get().addOnSuccessListener(doc->{
-   if(isFinishing())return;
-   if(!doc.exists()){due.setText("Vencimento: não definido");state.setText("● Assinatura sem data cadastrada");return;}
-   com.google.firebase.Timestamp expiry=doc.getTimestamp("vipAte");
-   boolean blocked=Boolean.TRUE.equals(doc.getBoolean("bloqueado"));
-   boolean active=Boolean.TRUE.equals(doc.getBoolean("vipAtivo"));
-   if(expiry==null){due.setText("Vencimento: não definido");state.setText(blocked?"● Conta bloqueada":"● Assinatura sem data cadastrada");return;}
-   due.setText("Vence em: "+new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(expiry.toDate()));
-   long remaining=expiry.toDate().getTime()-System.currentTimeMillis();
-   if(blocked){state.setText("● Conta bloqueada");state.setTextColor(0xffff7388);}
-   else if(!active||remaining<=0){state.setText("● Assinatura vencida");state.setTextColor(0xffff7388);}
-   else if(remaining<=3L*86400000L){state.setText("● Vence em "+Math.max(1,(remaining+86399999L)/86400000L)+" dia(s)");state.setTextColor(0xffffb86c);}
-   else{state.setText("● Assinatura ativa");state.setTextColor(0xff7ee7bd);}
-  }).addOnFailureListener(e->{due.setText("Vencimento indisponível");state.setText("Não foi possível consultar o Firebase");});
+ root.addView(label("Proteja as categorias adultas com um PIN de 4 números. O PIN inicial é 0000. Após alterar, o PIN anterior deixa de funcionar.",14,0xffbfc0ca));button("🔒  Alterar PIN de conteúdo adulto",v->AdultProtection.changePin(this));button("🔐  Bloquear conteúdo adulto agora",v->{AdultProtection.lock();Toast.makeText(this,"Conteúdo adulto bloqueado.",Toast.LENGTH_SHORT).show();});
+ showApkCard();
+ button("⚙  Configurações",v->new AlertDialog.Builder(this).setItems(new String[]{"Sobre o aplicativo","Voltar"},(d,w)->{if(w==0)showApkDetails();}).show());
+ button("🛡  Administração",v->startActivity(new Intent(this,AdminActivity.class)));showSubscriptionCard();}
+ private android.content.pm.PackageInfo apkInfo()throws Exception{return getPackageManager().getPackageInfo(getPackageName(),0);}
+ private long apkCode(android.content.pm.PackageInfo info){return android.os.Build.VERSION.SDK_INT>=28?info.getLongVersionCode():info.versionCode;}
+ private String formatDate(long timestamp){return new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm",java.util.Locale.forLanguageTag("pt-BR")).format(new java.util.Date(timestamp));}
+ private String apkDetails(){try{android.content.pm.PackageInfo info=apkInfo();return "Versão: "+info.versionName+"\nCódigo da versão: "+apkCode(info)+"\nPacote: "+getPackageName()+"\nAndroid: "+android.os.Build.VERSION.RELEASE+" (API "+android.os.Build.VERSION.SDK_INT+")\nInstalado em: "+formatDate(info.firstInstallTime)+"\nÚltima atualização: "+formatDate(info.lastUpdateTime);}catch(Exception e){return "Não foi possível consultar as informações do APK: "+e.getMessage();}}
+ private void showApkDetails(){new AlertDialog.Builder(this).setTitle("Sobre o Reel Séries").setMessage(apkDetails()).setPositiveButton("OK",null).show();}
+ private void showApkCard(){
+  LinearLayout card=new LinearLayout(this);card.setOrientation(1);card.setPadding(dp(17),dp(13),dp(17),dp(15));
+  android.graphics.drawable.GradientDrawable shape=new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,new int[]{0xff26334a,0xff171a26});shape.setCornerRadius(dp(18));shape.setStroke(dp(1),0xff48536a);card.setBackground(shape);
+  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(18);lp.bottomMargin=dp(15);root.addView(card,lp);
+  TextView heading=label("◆  REEL SÉRIES  •  INFORMAÇÕES DO APK",17,0xffff647a);heading.setTypeface(null,1);card.addView(heading);
+  try{android.content.pm.PackageInfo info=apkInfo();TextView version=label("Versão "+info.versionName,27,Color.WHITE);version.setTypeface(null,1);card.addView(version);card.addView(label("Código da versão  #"+apkCode(info),14,0xff9fefcb));card.addView(label("Pacote: "+getPackageName(),13,0xffd5dce9));card.addView(label("Android "+android.os.Build.VERSION.RELEASE+"  •  API "+android.os.Build.VERSION.SDK_INT,13,0xffd5dce9));card.addView(label("Instalado: "+formatDate(info.firstInstallTime),13,0xffd5dce9));card.addView(label("Atualizado: "+formatDate(info.lastUpdateTime),13,0xffd5dce9));}catch(Exception e){card.addView(label("Dados do APK indisponíveis",14,Color.WHITE));}
+  TextView more=label("VER TODOS OS DETALHES  ›",13,0xffff8b9d);more.setTypeface(null,1);card.addView(more);card.setOnClickListener(v->showApkDetails());
  }
+ private void showSubscriptionCard(){LinearLayout card=new LinearLayout(this);card.setOrientation(1);card.setPadding(dp(16),dp(12),dp(16),dp(16));android.graphics.drawable.GradientDrawable bgCard=new android.graphics.drawable.GradientDrawable();bgCard.setColor(0xff202c40);bgCard.setCornerRadius(dp(18));card.setBackground(bgCard);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(18);root.addView(card,lp);TextView title=label("●  MINHA ASSINATURA",18,0xffff667b);title.setTypeface(null,1);card.addView(title);FirebaseUser user=auth.getCurrentUser();if(user==null)return;card.addView(label("E-mail: "+(user.getEmail()==null?"Não informado":user.getEmail()),14,0xffe4eaf4));TextView due=label("Vencimento: consultando...",17,Color.WHITE);due.setTypeface(null,1);card.addView(due);TextView state=label("Consultando assinatura...",14,0xffffb86c);card.addView(state);db.collection("usuarios").document(user.getUid()).get().addOnSuccessListener(doc->{if(isFinishing())return;if(!doc.exists()){due.setText("Vencimento: não definido");state.setText("● Assinatura sem data cadastrada");return;}com.google.firebase.Timestamp expiry=doc.getTimestamp("vipAte");boolean blocked=Boolean.TRUE.equals(doc.getBoolean("bloqueado"));boolean active=Boolean.TRUE.equals(doc.getBoolean("vipAtivo"));if(expiry==null){due.setText("Vencimento: não definido");state.setText(blocked?"● Conta bloqueada":"● Assinatura sem data cadastrada");return;}due.setText("Vence em: "+new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(expiry.toDate()));long remaining=expiry.toDate().getTime()-System.currentTimeMillis();if(blocked){state.setText("● Conta bloqueada");state.setTextColor(0xffff7388);}else if(!active||remaining<=0){state.setText("● Assinatura vencida");state.setTextColor(0xffff7388);}else if(remaining<=3L*86400000L){state.setText("● Vence em "+Math.max(1,(remaining+86399999L)/86400000L)+" dia(s)");state.setTextColor(0xffffb86c);}else{state.setText("● Assinatura ativa");state.setTextColor(0xff7ee7bd);}}).addOnFailureListener(e->{due.setText("Vencimento indisponível");state.setText("Não foi possível consultar o Firebase");});}
  @Override public void onBackPressed(){if(auth.getCurrentUser()==null)finishAffinity();else super.onBackPressed();}
 }
