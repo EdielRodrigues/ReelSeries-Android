@@ -5,13 +5,24 @@ public class DetailsActivity extends Activity {
  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(0xff0c0c10);getWindow().setNavigationBarColor(0xff0c0c10);JSONObject o;try{o=new JSONObject(getIntent().getStringExtra("item"));}catch(Exception e){finish();return;}
  ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xff0c0c10);LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setPadding(dp(16),dp(12),dp(16),dp(28));scroll.addView(root);setContentView(scroll);
  TextView back=text("‹  Voltar ao catálogo",17,0xffe5e7eb);root.addView(back);back.setOnClickListener(v->finish());
- ImageView cover=new ImageView(this);cover.setScaleType(ImageView.ScaleType.CENTER_CROP);cover.setBackgroundColor(0xff222229);root.addView(cover,new LinearLayout.LayoutParams(-1,dp(285)));
- TextView title=text(o.optString("nome","Sem título"),29,0xffffffff);title.setTypeface(null,1);root.addView(title);
- TextView category=text("●  "+o.optString("categoria","Catálogo"),13,0xfff15c6b);root.addView(category);
- String episode=o.optString("episodio","").trim();if(!episode.isEmpty())root.addView(text("EPISÓDIO  •  "+episode,14,0xffd1d5db));
- String url=LocalCatalog.first(o,"url","video","link","stream","stream_url","video_url","play_url","source","src");Button play=new Button(this);play.setAllCaps(false);play.setText("▶  Assistir agora");play.setTextSize(18);play.setTextColor(0xffffffff);play.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xffe6384b));root.addView(play,new LinearLayout.LayoutParams(-1,dp(58)));
+ // Capa em destaque: mostra a imagem inteira sem recortar as bordas.
+ FrameLayout hero=new FrameLayout(this);hero.setBackgroundColor(0xff101015);
+ LinearLayout.LayoutParams heroParams=new LinearLayout.LayoutParams(-1,dp(560));heroParams.bottomMargin=dp(12);root.addView(hero,heroParams);
+ ImageView cover=new ImageView(this);cover.setScaleType(ImageView.ScaleType.FIT_CENTER);cover.setBackgroundColor(0xff101015);
+ hero.addView(cover,new FrameLayout.LayoutParams(-1,-1));
+ // Degradê escuro para manter os controles legíveis sobre a arte.
+ View shade=new View(this);shade.setBackground(new android.graphics.drawable.GradientDrawable(
+  android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+  new int[]{0x00101015,0x99101015,0xff0c0c10}));
+ FrameLayout.LayoutParams shadeParams=new FrameLayout.LayoutParams(-1,dp(310),Gravity.BOTTOM);hero.addView(shade,shadeParams);
+ LinearLayout heroControls=new LinearLayout(this);heroControls.setOrientation(1);heroControls.setPadding(dp(10),0,dp(10),dp(10));
+ FrameLayout.LayoutParams controlParams=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);hero.addView(heroControls,controlParams);
+ TextView title=text(o.optString("nome","Sem título"),27,0xffffffff);title.setTypeface(null,1);heroControls.addView(title);
+ TextView category=text("●  "+o.optString("categoria","Catálogo"),13,0xfff15c6b);heroControls.addView(category);
+ String episode=o.optString("episodio","").trim();if(!episode.isEmpty())heroControls.addView(text("EPISÓDIO  •  "+episode,14,0xffd1d5db));
+ String url=LocalCatalog.first(o,"url","video","link","stream","stream_url","video_url","play_url","source","src");Button play=new Button(this);play.setAllCaps(false);play.setText("▶  Assistir agora");play.setTextSize(18);play.setTextColor(0xffffffff);play.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xffe6384b));heroControls.addView(play,new LinearLayout.LayoutParams(-1,dp(58)));
  play.setEnabled(url.startsWith("http"));if(!url.startsWith("http"))play.setText(SeriesHelper.isSeries(o)?"Selecione um episódio abaixo":"Vídeo indisponível");play.setOnClickListener(v->{Intent i=new Intent(this,PlayerActivity.class);i.putExtra("url",url);i.putExtra("name",o.optString("nome"));i.putExtra("capa",o.optString("capa",o.optString("backdrop","")));i.putExtra("adult",AdultProtection.adult(o));attachPlaylist(i,url);AdultProtection.require(this,AdultProtection.adult(o),()->startActivity(i));});
- Button favorite=new Button(this);favorite.setAllCaps(false);String favKey=o.optString("nome");android.content.SharedPreferences prefs=UserMediaState.prefs(this,"reel_favorites");Runnable updateFav=()->favorite.setText(prefs.getBoolean(favKey,false)?"♥  Remover dos favoritos":"♡  Adicionar aos favoritos");updateFav.run();favorite.setOnClickListener(v->{prefs.edit().putBoolean(favKey,!prefs.getBoolean(favKey,false)).apply();updateFav.run();});favorite.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff33333b));favorite.setTextColor(0xffffffff);root.addView(favorite);
+ Button favorite=new Button(this);favorite.setAllCaps(false);String favKey=o.optString("nome");android.content.SharedPreferences prefs=UserMediaState.prefs(this,"reel_favorites");Runnable updateFav=()->favorite.setText(prefs.getBoolean(favKey,false)?"♥  Remover dos favoritos":"♡  Adicionar aos favoritos");updateFav.run();favorite.setOnClickListener(v->{prefs.edit().putBoolean(favKey,!prefs.getBoolean(favKey,false)).apply();updateFav.run();});favorite.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff33333b));favorite.setTextColor(0xffffffff);heroControls.addView(favorite);
  root.addView(sectionTitle("Sinopse"));String synopsis=o.optString("sinopse","").trim();root.addView(text(synopsis.isEmpty()?"Sinopse não informada.":synopsis,15,0xffcbd5e1));
  if(SeriesHelper.isSeries(o))showSeasons(root,o);
  root.addView(sectionTitle("Informações"));root.addView(text("Título: "+o.optString("nome")+"\nCategoria: "+o.optString("categoria")+(episode.isEmpty()?"":"\nEpisódio: "+episode)+"\nFonte: catálogo Reel Séries",14,0xff9ca3af));
