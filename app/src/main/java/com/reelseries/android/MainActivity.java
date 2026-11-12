@@ -5,7 +5,7 @@ import android.app.*;import android.os.*;import android.content.*;import android
 public class MainActivity extends Activity {
  final ArrayList<JSONObject> all=new ArrayList<>(), shown=new ArrayList<>(); final java.util.HashMap<String,JSONObject> cloud=new java.util.HashMap<>();
  final ExecutorService pool=Executors.newFixedThreadPool(3); final java.util.concurrent.ExecutorService catalogQueries=Executors.newFixedThreadPool(2); final android.util.LruCache<String,Bitmap> cache=new android.util.LruCache<String,Bitmap>(24);
- GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos", channelGroup=""; int pageOffset=0; boolean loadingPage=false, endReached=false, bundledPaging=false; TextView moreButton, previousButton, pageLabel; int currentPage=0; static final int PAGE_SIZE=100; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; int localCatalogCount=0; boolean catalogLoadedOnce=false; boolean pageLoadFailed=false; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
+ GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos", channelGroup=""; int pageOffset=0; boolean loadingPage=false, endReached=false, bundledPaging=false; TextView moreButton, previousButton, pageLabel; int currentPage=0; static final int PAGE_SIZE=60; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; int localCatalogCount=0; boolean catalogLoadedOnce=false; boolean pageLoadFailed=false; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
  final ArrayList<JSONObject> heroItems=new ArrayList<>(); int heroIndex=0; boolean heroActive=false;
  LinearLayout continueSectionView,continueCardsView;
  Runnable heroTicker; android.widget.LinearLayout heroDots;
@@ -415,7 +415,7 @@ public class MainActivity extends Activity {
    if(loadingPage||catalogQueries.isShutdown())return;
    loadingPage=true;final int version=requestVersion,offset=pageOffset;
    final String q=search.getText().toString().toLowerCase(java.util.Locale.ROOT).trim(),m=mode,cat=selected,groupFilter=channelGroup;
-   moreButton.setVisibility(View.VISIBLE);moreButton.setText("CARREGANDO...");status.setText("Carregando "+(groupFilter.isEmpty()?m:groupFilter)+" • página "+(currentPage+1)+" (até 100 títulos)...");
+   moreButton.setVisibility(View.VISIBLE);moreButton.setText("CARREGANDO...");status.setText("Carregando "+(groupFilter.isEmpty()?m:groupFilter)+" • página "+(currentPage+1)+" (60 títulos por página)...");
    if(previousButton!=null)previousButton.setVisibility(currentPage>0?View.VISIBLE:View.INVISIBLE);
    if(pageLabel!=null)pageLabel.setText("Página "+(currentPage+1));
    // Se uma consulta antiga ficar presa, a tela nao fica bloqueada para sempre.
@@ -437,8 +437,36 @@ public class MainActivity extends Activity {
       for(int i=0;i<items.length();i++){JSONObject item=items.optJSONObject(i);if(item!=null)page.add(item);}
       hasNext=saved.optBoolean("next",false);
      }else{
+      // Paginação sobre títulos visíveis e únicos, não sobre linhas brutas
+      // (um servidor pode cadastrar milhares de episódios com a mesma série).
       try(LocalCatalog db=new LocalCatalog(this)){
-       page=groupFilter.isEmpty()?db.feed(q,m,cat,offset,PAGE_SIZE+1):db.catalogFolderFeed(groupFilter,q,offset,PAGE_SIZE+1);
+       java.util.HashSet<String> uniqueIds=new java.util.HashSet<>();
+       java.util.HashSet<String> uniqueSeries=new java.util.HashSet<>();
+       int matched=0,scanOffset=0;
+       final int chunk=400;
+       boolean finished=false;
+       while(!finished){
+        ArrayList<JSONObject> batch=groupFilter.isEmpty()
+         ?db.feed(q,m,cat,scanOffset,chunk)
+         :db.catalogFolderFeed(groupFilter,q,scanOffset,chunk);
+        if(batch.isEmpty())break;
+        scanOffset+=batch.size();
+        for(JSONObject item:batch){
+         if(groupFilter.isEmpty()&&!matches(item,q))continue;
+         String id=item.optString("id","");
+         if(!id.isEmpty()&&!uniqueIds.add(id))continue;
+         if(SeriesHelper.isSeries(item)){
+          String seriesKey=SeriesHelper.key(item);
+          if(!uniqueSeries.add(seriesKey))continue;
+         }
+         if(matched>=offset){
+          if(page.size()==PAGE_SIZE){finished=true;break;}
+          page.add(item);
+         }
+         matched++;
+        }
+        if(batch.size()<chunk)break;
+       }
       }
       hasNext=page.size()>PAGE_SIZE;
       if(hasNext)page.remove(page.size()-1);
