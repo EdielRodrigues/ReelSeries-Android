@@ -54,7 +54,6 @@ public class MainActivity extends Activity {
  int bg=Color.rgb(10,10,13), fg=Color.WHITE; final ArrayList<String> catNames=new ArrayList<>();
  int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
  @Override public void onCreate(Bundle b){super.onCreate(b);
- checkApkUpdate();
  if(com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser()==null){
   startActivity(new Intent(this,ProfileActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();return;
  }
@@ -197,7 +196,7 @@ public class MainActivity extends Activity {
   handler.postDelayed(heroBatchTicker,Math.max(1000L,next-System.currentTimeMillis()+200L));
  }
  @Override protected void onPause(){handler.removeCallbacks(homeCastStatusUpdater);super.onPause();heroActive=false;if(heroTicker!=null)handler.removeCallbacks(heroTicker);if(heroBatchTicker!=null)handler.removeCallbacks(heroBatchTicker);}
- void checkApkUpdate(){ApkUpdateChecker.check(this);}
+ void checkApkUpdate(){if(com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser()!=null)ApkUpdateChecker.check(this);}
  void refreshContinueCards(LinearLayout section,LinearLayout cards){
   cards.removeAllViews();
   ArrayList<JSONObject> recent=new ArrayList<>();
