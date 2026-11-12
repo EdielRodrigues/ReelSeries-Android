@@ -370,7 +370,7 @@ public class MainActivity extends Activity {
  boolean matches(JSONObject o,String query){String name=o.optString("nome","");String cat=o.optString("categoria","");String c=cat.toLowerCase(java.util.Locale.ROOT);String n=name.toLowerCase(java.util.Locale.ROOT);if(!n.contains(query))return false;if(!selected.equals("Todas")&&!selected.equals(cat))return false;boolean tv=c.contains("iptv")||c.contains("canal")||c.contains("tv ao vivo")||c.equals("tv")||c.contains("televis");boolean series=SeriesHelper.isSeries(o);if(mode.equals("TV / IPTV"))return tv;if(mode.equals("Séries"))return series&&!tv;if(mode.equals("Filmes"))return !tv&&!series&&(c.contains("filme")||c.contains("movie")||c.contains("cinema"));return true;}
   // Cache persistente por pasta, filtro, busca e pagina (nao e apagado ao fechar o app).
   java.io.File pageCacheFile(String group,String q,String modeName,String category,int offset){
-   String key=getSharedPreferences("reel_page_cache_v1",MODE_PRIVATE).getInt("generation",0)
+   String key=getSharedPreferences("reel_page_cache_v2",MODE_PRIVATE).getInt("generation",0)
     +"|"+group+"|"+q+"|"+modeName+"|"+category+"|"+offset+"|"+PAGE_SIZE;
    try{
     byte[] digest=java.security.MessageDigest.getInstance("SHA-256").digest(key.getBytes("UTF-8"));
@@ -460,6 +460,7 @@ public class MainActivity extends Activity {
           if(!uniqueSeries.add(seriesKey))continue;
          }
          if(matched>=offset){
+          // O 61º título indica que existe uma próxima página.
           if(page.size()==PAGE_SIZE){finished=true;break;}
           page.add(item);
          }
@@ -468,8 +469,7 @@ public class MainActivity extends Activity {
         if(batch.size()<chunk)break;
        }
       }
-      hasNext=page.size()>PAGE_SIZE;
-      if(hasNext)page.remove(page.size()-1);
+      hasNext=finished;
       savePage(file,page,hasNext);
      }
      final boolean next=hasNext;
