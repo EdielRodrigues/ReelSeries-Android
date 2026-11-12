@@ -6,6 +6,7 @@ public class MainActivity extends Activity {
  final ArrayList<JSONObject> all=new ArrayList<>(), shown=new ArrayList<>(); final java.util.HashMap<String,JSONObject> cloud=new java.util.HashMap<>();
  final ExecutorService pool=Executors.newFixedThreadPool(3); final java.util.concurrent.ExecutorService catalogQueries=Executors.newFixedThreadPool(2); final android.util.LruCache<String,Bitmap> cache=new android.util.LruCache<String,Bitmap>(24);
  GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos", channelGroup=""; int pageOffset=0; boolean loadingPage=false, endReached=false, bundledPaging=false; TextView moreButton, previousButton, pageLabel; int currentPage=0; static final int PAGE_SIZE=60; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; int localCatalogCount=0; boolean catalogLoadedOnce=false; boolean pageLoadFailed=false; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
+ android.widget.FrameLayout featuredHero; ImageView featuredCover;
  final ArrayList<JSONObject> heroItems=new ArrayList<>(); int heroIndex=0; boolean heroActive=false;
  LinearLayout continueSectionView,continueCardsView;
  Runnable heroTicker; android.widget.LinearLayout heroDots;
@@ -90,8 +91,8 @@ public class MainActivity extends Activity {
   handler.postDelayed(()->swipe.setRefreshing(false),1800);
  });
  LinearLayout content=new LinearLayout(this);content.setOrientation(1);content.setPadding(dp(15),0,dp(15),dp(14));scroll.addView(content);
- android.widget.FrameLayout hero=new android.widget.FrameLayout(this);hero.setBackgroundColor(0xff19191f);content.addView(hero,new LinearLayout.LayoutParams(-1,dp(390)));
- ImageView heroImage=new ImageView(this);heroImage.setScaleType(ImageView.ScaleType.CENTER_CROP);hero.addView(heroImage,new android.widget.FrameLayout.LayoutParams(-1,-1));
+ android.widget.FrameLayout hero=new android.widget.FrameLayout(this);hero.setBackgroundColor(0xff19191f);content.addView(hero,new LinearLayout.LayoutParams(-1,dp(390)));featuredHero=hero;
+ ImageView heroImage=new ImageView(this);heroImage.setScaleType(ImageView.ScaleType.FIT_CENTER);featuredCover=heroImage;hero.addView(heroImage,new android.widget.FrameLayout.LayoutParams(-1,dp(390),Gravity.TOP));
  View overlay=new View(this);overlay.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0x120b0b0e,0x770b0b0e,0xff0b0b0e}));hero.addView(overlay,new android.widget.FrameLayout.LayoutParams(-1,-1));
  LinearLayout heroCopy=new LinearLayout(this);heroCopy.setOrientation(1);heroCopy.setPadding(dp(14),dp(10),dp(14),dp(16));android.widget.FrameLayout.LayoutParams hp=new android.widget.FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);hero.addView(heroCopy,hp);
  TextView badge=navText("●  EM DESTAQUE",12);badge.setTypeface(null,1);badge.setTextColor(0xffff455e);heroCopy.addView(badge);
@@ -537,7 +538,17 @@ public class MainActivity extends Activity {
  observeAccountAccess();if(continueSectionView!=null)refreshContinueCards(continueSectionView,continueCardsView);heroActive=true;if(heroBatchTicker!=null){handler.removeCallbacks(heroBatchTicker);handler.post(heroBatchTicker);}if(heroTicker!=null){handler.removeCallbacks(heroTicker);handler.postDelayed(heroTicker,HERO_SLIDE_MS);}if(search!=null){String wanted=getIntent().getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){getIntent().removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}if(!catalogLoadedOnce&&!loadingPage)resetFeed();if(FirebaseCatalogSync.configured(this))loadCloud();}}
  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(search!=null){String wanted=intent.getStringExtra("reel_search_title");if(wanted!=null&&!wanted.isEmpty()){intent.removeExtra("reel_search_title");search.setText(wanted);search.setSelection(search.length());}}}
  void details(JSONObject o){AdultProtection.require(this,AdultProtection.adult(o),()->{Intent i=new Intent(this,DetailsActivity.class);i.putExtra("item",o.toString());startActivity(i);});}
- void loadCover(String url,ImageView image){if(url.equals(image.getTag()) && image.getDrawable()!=null)return;image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag()))image.setImageBitmap(bitmap);});}}catch(Exception ignored){}});}
+ void fitFeaturedImage(ImageView image,Bitmap bmp){
+  if(image!=featuredCover||featuredHero==null||bmp==null||bmp.getWidth()<=0)return;
+  int width=featuredHero.getWidth();
+  if(width<=0)width=getResources().getDisplayMetrics().widthPixels-dp(32);
+  int imageHeight=Math.max(dp(150),Math.round((float)width*bmp.getHeight()/bmp.getWidth()));
+  android.widget.FrameLayout.LayoutParams coverLp=new android.widget.FrameLayout.LayoutParams(-1,imageHeight,Gravity.TOP);
+  image.setLayoutParams(coverLp);
+  android.view.ViewGroup.LayoutParams heroLp=featuredHero.getLayoutParams();
+  if(heroLp!=null){heroLp.height=Math.max(dp(390),imageHeight+dp(265));featuredHero.setLayoutParams(heroLp);}
+ }
+ void loadCover(String url,ImageView image){if(url.equals(image.getTag()) && image.getDrawable()!=null)return;image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);fitFeaturedImage(image,hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag())){image.setImageBitmap(bitmap);fitFeaturedImage(image,bitmap);}});}}catch(Exception ignored){}});}
  @Override protected void onDestroy(){if(heroTicker!=null)handler.removeCallbacks(heroTicker);if(heroBatchTicker!=null)handler.removeCallbacks(heroBatchTicker);catalogQueries.shutdownNow();pool.shutdownNow();if(accessSubscription!=null)accessSubscription.remove();super.onDestroy();}
 
 
