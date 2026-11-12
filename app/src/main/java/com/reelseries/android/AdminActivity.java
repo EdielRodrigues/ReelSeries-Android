@@ -467,6 +467,7 @@ public class AdminActivity extends Activity {
    }).show();
  }
  private int getPackageVersionCode(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionCode;}catch(Exception e){return 0;}}
+ // Publica em atualizacoes/apk_update via FirebaseCatalogSync.publishApk.
  private void publishApkDialog(){
   if(!authorized||busy)return;
   LinearLayout form=new LinearLayout(this);form.setOrientation(1);form.setPadding(dp(16),dp(8),dp(16),0);

@@ -196,7 +196,7 @@ public class MainActivity extends Activity {
   handler.postDelayed(heroBatchTicker,Math.max(1000L,next-System.currentTimeMillis()+200L));
  }
  @Override protected void onPause(){handler.removeCallbacks(homeCastStatusUpdater);super.onPause();heroActive=false;if(heroTicker!=null)handler.removeCallbacks(heroTicker);if(heroBatchTicker!=null)handler.removeCallbacks(heroBatchTicker);}
- void checkApkUpdate(){if(com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser()!=null)ApkUpdateChecker.check(this);}
+ void checkApkUpdate(){if(com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser()!=null)ApkUpdateChecker.check(this); // Consulta atualizacoes/apk_update no Firebase}
  void refreshContinueCards(LinearLayout section,LinearLayout cards){
   cards.removeAllViews();
   ArrayList<JSONObject> recent=new ArrayList<>();

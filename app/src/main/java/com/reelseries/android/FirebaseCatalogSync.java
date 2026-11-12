@@ -34,6 +34,9 @@ public final class FirebaseCatalogSync {
    return result;
   }finally{conn.disconnect();}
  }
+ private static String apkUpdateEndpoint(Context ctx,String token)throws Exception{
+  return base(ctx)+"/atualizacoes/apk_update.json"+(token==null?"":"?auth="+URLEncoder.encode(token,"UTF-8"));
+ }
  private static String endpoint(Context ctx,String suffix,String token)throws Exception{
   return base(ctx)+"/catalogo_unico/"+suffix+".json"+(token==null?"":"?auth="+URLEncoder.encode(token,"UTF-8"));
  }
@@ -189,16 +192,16 @@ public final class FirebaseCatalogSync {
   if(!apkUrl.startsWith("https://"))throw new IOException("Informe um link HTTPS direto para o APK");
   if(version<1)throw new IOException("Código da versão inválido");
   JSONObject info=new JSONObject();info.put("url",apkUrl);info.put("versionCode",version);info.put("publishedAt",System.currentTimeMillis());
-  request(endpoint(ctx,"meta/apk_update",token),"PUT",info.toString());
+  request(apkUpdateEndpoint(ctx,token),"PUT",info.toString());
  }
  public static JSONObject apkRelease(Context ctx)throws Exception{
   String response;
-  try{response=request(endpoint(ctx,"meta/apk_update",null),"GET",null);}
+  try{response=request(apkUpdateEndpoint(ctx,null),"GET",null);}
   catch(IOException publicError){
    com.google.firebase.auth.FirebaseUser user=com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
    if(user==null)throw publicError;
    com.google.firebase.auth.GetTokenResult token=com.google.android.gms.tasks.Tasks.await(user.getIdToken(false),15,java.util.concurrent.TimeUnit.SECONDS);
-   response=request(endpoint(ctx,"meta/apk_update",token.getToken()),"GET",null);
+   response=request(apkUpdateEndpoint(ctx,token.getToken()),"GET",null);
   }
   return response.equals("null")?new JSONObject():new JSONObject(response);
  }

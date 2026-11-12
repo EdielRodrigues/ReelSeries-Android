@@ -57,7 +57,7 @@ public final class ApkUpdateChecker {
       }).show();
     });
    }catch(Exception e){
-    android.util.Log.e("ReelSeriesUpdate","Falha na consulta ao Firebase: catalogo_unico/meta/apk_update",e);
+    android.util.Log.e("ReelSeriesUpdate","Falha na consulta ao Firebase: atualizacoes/apk_update",e);
     activity.runOnUiThread(()->{if(!activity.isFinishing()&&!activity.isDestroyed())Toast.makeText(activity,"Falha ao verificar atualização: "+e.getMessage(),Toast.LENGTH_LONG).show();});
    }
    finally{synchronized(ApkUpdateChecker.class){busy=false;}}
