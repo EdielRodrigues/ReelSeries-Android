@@ -90,7 +90,23 @@ public class MainActivity extends Activity {
  header.addView(homeCast,new LinearLayout.LayoutParams(dp(headerIconDp),dp(48)));
  TextView searchIcon=navText("⌕",30);header.addView(searchIcon,new LinearLayout.LayoutParams(dp(headerIconDp),dp(48)));searchIcon.setOnClickListener(v->{search.requestFocus();((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(search,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});
  TextView profile=navText("◉",24);header.addView(profile,new LinearLayout.LayoutParams(dp(headerIconDp),dp(48)));profile.setOnClickListener(v->startActivity(new Intent(this,ProfileActivity.class)));
- TextView admin=navText("⚙",22);header.addView(admin,new LinearLayout.LayoutParams(dp(headerIconDp),dp(48)));admin.setOnClickListener(v->startActivity(new Intent(this,AdminActivity.class)));
+ TextView admin=navText("⚙",22);
+ admin.setVisibility(View.GONE);
+ header.addView(admin,new LinearLayout.LayoutParams(dp(headerIconDp),dp(48)));
+ admin.setOnClickListener(v->startActivity(new Intent(this,AdminActivity.class)));
+ com.google.firebase.auth.FirebaseUser adminUser=com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
+ if(adminUser!=null){
+  final String adminUid=adminUser.getUid();
+  com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("admins").document(adminUid).get()
+   .addOnSuccessListener(doc->{
+    if(isFinishing()||isDestroyed())return;
+    com.google.firebase.auth.FirebaseUser current=com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
+    boolean allowed=current!=null&&adminUid.equals(current.getUid())&&doc.exists()
+     &&Boolean.TRUE.equals(doc.getBoolean("active"))&&"admin".equals(doc.getString("role"));
+    admin.setVisibility(allowed?View.VISIBLE:View.GONE);
+   })
+   .addOnFailureListener(error->admin.setVisibility(View.GONE));
+ }
  androidx.swiperefreshlayout.widget.SwipeRefreshLayout swipe=new androidx.swiperefreshlayout.widget.SwipeRefreshLayout(this);
  swipe.setColorSchemeColors(0xffef4356);swipe.setProgressBackgroundColorSchemeColor(0xff202027);
  layout.addView(swipe,new LinearLayout.LayoutParams(-1,0,1));

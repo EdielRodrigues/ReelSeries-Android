@@ -16,9 +16,7 @@ public class ProfileActivity extends Activity {
  if(user==null)return;
  TextView library=label("MINHA BIBLIOTECA",19,Color.WHITE);library.setTypeface(null,1);root.addView(library);button("♥  Minha lista",v->startActivity(new Intent(this,FavoritesActivity.class)));button("▶  Continuar assistindo",v->startActivity(new Intent(this,ContinueWatchingActivity.class)));button("♛  Minha assinatura",v->new AlertDialog.Builder(this).setMessage(vip.getText()).setPositiveButton("OK",null).show());TextView security=label("SEGURANÇA E PRIVACIDADE",19,Color.WHITE);security.setTypeface(null,1);root.addView(security);
  root.addView(label("Proteja as categorias adultas com um PIN de 4 números. O PIN inicial é 0000. Após alterar, o PIN anterior deixa de funcionar.",14,0xffbfc0ca));button("🔒  Alterar PIN de conteúdo adulto",v->AdultProtection.changePin(this));button("🔐  Bloquear conteúdo adulto agora",v->{AdultProtection.lock();Toast.makeText(this,"Conteúdo adulto bloqueado.",Toast.LENGTH_SHORT).show();});
- showApkCard();
- button("⚙  Configurações",v->new AlertDialog.Builder(this).setItems(new String[]{"Sobre o aplicativo","Voltar"},(d,w)->{if(w==0)showApkDetails();}).show());
- button("🛡  Administração",v->startActivity(new Intent(this,AdminActivity.class)));showSubscriptionCard();}
+ showApkCard();showSubscriptionCard();}
  private android.content.pm.PackageInfo apkInfo()throws Exception{return getPackageManager().getPackageInfo(getPackageName(),0);}
  private long apkCode(android.content.pm.PackageInfo info){return android.os.Build.VERSION.SDK_INT>=28?info.getLongVersionCode():info.versionCode;}
  private String formatDate(long timestamp){return new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm",java.util.Locale.forLanguageTag("pt-BR")).format(new java.util.Date(timestamp));}
