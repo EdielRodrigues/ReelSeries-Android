@@ -28,9 +28,9 @@ public final class AccountSession {
   if(user==null){cb.done(false,"Faça login para continuar.");return;}
   String uid=user.getUid(),id=deviceId(ctx);SharedPreferences pref=prefs(ctx);
   long now=System.currentTimeMillis();
-  if(!force && uid.equals(pref.getString("uid","")) && now-pref.getLong("heartbeat",0)<HEARTBEAT_MS){cb.done(true,"");return;}
+  // Always check the server when resuming; do not trust a local heartbeat to authorize access.
   DocumentReference ref=FirebaseFirestore.getInstance().collection("usuarios").document(uid);
-  ref.get().addOnSuccessListener(doc->{
+  ref.get(com.google.firebase.firestore.Source.SERVER).addOnSuccessListener(doc->{
    if(doc.exists()){claim(ref,uid,id,ctx,cb);return;}
    Map<String,Object> initial=new HashMap<>();initial.put("uid",uid);initial.put("email",user.getEmail()==null?"":user.getEmail());initial.put("ultimoAcesso",com.google.firebase.firestore.FieldValue.serverTimestamp());
    ref.set(initial,SetOptions.merge()).addOnSuccessListener(v->claim(ref,uid,id,ctx,cb))
