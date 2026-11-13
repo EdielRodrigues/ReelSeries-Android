@@ -232,7 +232,7 @@ public class MainActivity extends Activity {
   long next=((System.currentTimeMillis()/HERO_ROTATE_MS)+1)*HERO_ROTATE_MS;
   handler.postDelayed(heroBatchTicker,Math.max(1000L,next-System.currentTimeMillis()+200L));
  }
- @Override protected void onPause(){handler.removeCallbacks(homeCastStatusUpdater);super.onPause();heroActive=false;if(heroTicker!=null)handler.removeCallbacks(heroTicker);if(heroBatchTicker!=null)handler.removeCallbacks(heroBatchTicker);}
+ @Override protected void onPause(){handler.removeCallbacks(sessionHeartbeat);handler.removeCallbacks(homeCastStatusUpdater);super.onPause();heroActive=false;if(heroTicker!=null)handler.removeCallbacks(heroTicker);if(heroBatchTicker!=null)handler.removeCallbacks(heroBatchTicker);}
  void checkApkUpdate(){if(com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser()!=null)ApkUpdateChecker.check(this); } // Consulta atualizacoes/apk_update no Firebase
  void refreshContinueCards(LinearLayout section,LinearLayout cards){
   cards.removeAllViews();
@@ -579,7 +579,7 @@ public class MainActivity extends Activity {
   android.view.ViewGroup.LayoutParams params=grid.getLayoutParams();
   if(params!=null&&params.height!=height){params.height=height;grid.setLayoutParams(params);}
  }
- @Override protected void onResume(){super.onResume();verifyDeviceSession();checkCustomerUpdateOnOpen();handler.removeCallbacks(homeCastStatusUpdater);handler.post(homeCastStatusUpdater);
+ @Override protected void onResume(){super.onResume();handler.removeCallbacks(sessionHeartbeat);handler.postDelayed(sessionHeartbeat,5L*60*1000);verifyDeviceSession();checkCustomerUpdateOnOpen();handler.removeCallbacks(homeCastStatusUpdater);handler.post(homeCastStatusUpdater);
  if(com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser()==null){
   startActivity(new Intent(this,ProfileActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();return;
  }
@@ -597,6 +597,7 @@ public class MainActivity extends Activity {
   if(heroLp!=null){heroLp.height=Math.max(dp(390),imageHeight+dp(265));featuredHero.setLayoutParams(heroLp);}
  }
  void loadCover(String url,ImageView image){if(url.equals(image.getTag()) && image.getDrawable()!=null)return;image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);fitFeaturedImage(image,hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://")&&!url.startsWith("http://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag())){image.setImageBitmap(bitmap);fitFeaturedImage(image,bitmap);}});}}catch(Exception ignored){}});}
+ private final Runnable sessionHeartbeat=new Runnable(){public void run(){if(!isFinishing()){verifyDeviceSession();handler.postDelayed(this,5L*60*1000);}}};
  private boolean sessionReady=false;
  private boolean sessionChecking=false;
  private final java.util.concurrent.atomic.AtomicBoolean remoteUpdateBusy=new java.util.concurrent.atomic.AtomicBoolean(false);

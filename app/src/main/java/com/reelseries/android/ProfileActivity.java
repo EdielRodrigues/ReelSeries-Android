@@ -48,10 +48,55 @@ public class ProfileActivity extends Activity {
  @Override public void onCreate(Bundle b){super.onCreate(b);auth=FirebaseAuth.getInstance();db=FirebaseFirestore.getInstance();getWindow().setStatusBarColor(bg);ScrollView scroll=new ScrollView(this);root=new LinearLayout(this);root.setOrientation(1);root.setPadding(dp(22),dp(24),dp(22),dp(28));root.setBackgroundColor(bg);scroll.addView(root);setContentView(scroll);render();ApkUpdateChecker.check(this);}
  @Override protected void onResume(){super.onResume();ApkUpdateChecker.check(this);}
  void registerProfile(FirebaseUser user){if(user==null)return;java.util.Map<String,Object> data=new java.util.HashMap<>();data.put("email",user.getEmail()==null?"":user.getEmail());data.put("uid",user.getUid());data.put("ultimoAcesso",com.google.firebase.firestore.FieldValue.serverTimestamp());db.collection("usuarios").document(user.getUid()).set(data,com.google.firebase.firestore.SetOptions.merge()).addOnFailureListener(e->android.util.Log.w("ReelPerfil","Falha ao registrar perfil",e));}
- void showBlocked(){new AlertDialog.Builder(this).setTitle("Acesso bloqueado").setMessage("Este perfil foi bloqueado pela administração do Reel Séries.").setCancelable(false).setPositiveButton("Sair da conta",(d,w)->{auth.signOut();finishAffinity();}).show();}
- void render(){root.removeAllViews();TextView title=label("◉  MEU PERFIL",27,0xffef4356);title.setTypeface(null,1);root.addView(title);identity=label("Conta não conectada",17,Color.WHITE);if(auth.getCurrentUser()==null)root.addView(identity);else profileHeader(auth.getCurrentUser());vip=label("Assinatura: não verificada",15,0xffb7c2d1);if(auth.getCurrentUser()==null)root.addView(vip);
- FirebaseUser user=auth.getCurrentUser();if(user!=null){registerProfile(user);identity.setText(user.getEmail()==null?"Usuário conectado":user.getEmail());db.collection("usuarios").document(user.getUid()).get().addOnSuccessListener(d->{if(isFinishing())return;Boolean active=d.getBoolean("vipAtivo");com.google.firebase.Timestamp until=d.getTimestamp("vipAte");boolean valid=Boolean.TRUE.equals(active)&&until!=null&&until.toDate().getTime()>System.currentTimeMillis();vip.setText(valid?"VIP ativo até "+new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(until.toDate()):"Assinatura vencida ou não ativa");}).addOnFailureListener(e->vip.setText("Não foi possível consultar a assinatura"));button("Sair da conta",v->AccountSession.release(this,()->{auth.signOut();finishAffinity();}));}
- else{EditText email=new EditText(this);email.setSingleLine();email.setHint("E-mail");email.setTextColor(-1);email.setHintTextColor(0xffaaaaaa);root.addView(email);EditText pass=new EditText(this);pass.setHint("Senha");pass.setTextColor(-1);pass.setHintTextColor(0xffaaaaaa);pass.setInputType(129);root.addView(pass);TextView msg=label("",13,0xffff8b96);root.addView(msg);button("Entrar",v->auth.signInWithEmailAndPassword(email.getText().toString().trim(),pass.getText().toString()).addOnSuccessListener(r->AccountSession.ensure(this,true,(allowed,reason)->{if(!allowed){auth.signOut();msg.setText(reason);return;}startActivity(new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();})).addOnFailureListener(e->msg.setText(e.getMessage())));button("Criar conta",v->auth.createUserWithEmailAndPassword(email.getText().toString().trim(),pass.getText().toString()).addOnSuccessListener(r->AccountSession.ensure(this,true,(allowed,reason)->{if(!allowed){auth.signOut();msg.setText(reason);return;}startActivity(new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();})).addOnFailureListener(e->msg.setText(e.getMessage())));}
+ void showBlocked(){new AlertDialog.Builder(this).setTitle("Acesso bloqueado").setMessage("Este perfil foi bloqueado pela administração do Reel Séries.").setCancelable(false).setPositiveButton("Sair da conta",(d,w)->AccountSession.release(this,()->{auth.signOut();startActivity(new Intent(this,ProfileActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();})).show();}
+
+ private EditText authInput(String hint,boolean password){
+  EditText input=new EditText(this);input.setSingleLine(true);input.setHint(hint);input.setTextSize(16);input.setTextColor(Color.WHITE);input.setHintTextColor(0xffa5a7b5);
+  input.setPadding(dp(16),0,dp(16),0);input.setBackground(roundBg(0xff252631,12));
+  input.setInputType(password?129:hint.equals("E-mail")?android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS:android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(56));lp.bottomMargin=dp(14);root.addView(input,lp);return input;
+ }
+ private void showAuthentication(boolean register){
+  if(profileSessionListener!=null){profileSessionListener.remove();profileSessionListener=null;}
+  root.removeAllViews();root.setPadding(dp(24),dp(45),dp(24),dp(28));
+  TextView logo=label("◆  REEL SÉRIES",29,0xffff476e);logo.setGravity(Gravity.CENTER);logo.setTypeface(null,1);root.addView(logo);
+  TextView heading=label(register?"CRIAR CONTA":"ENTRAR NA CONTA",23,Color.WHITE);heading.setTypeface(null,1);heading.setGravity(Gravity.CENTER);LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,-2);hp.topMargin=dp(30);root.addView(heading,hp);
+  TextView intro=label(register?"Cadastre seus dados para começar.":"Entre com seu e-mail e senha para continuar.",14,0xffbfc0ca);intro.setGravity(Gravity.CENTER);LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,-2);ip.bottomMargin=dp(25);root.addView(intro,ip);
+  EditText name=register?authInput("Nome",false):null;
+  EditText email=authInput("E-mail",false),pass=authInput("Senha",true);
+  TextView error=label("",14,0xffff8b96);root.addView(error);
+  button(register?"Criar conta":"Entrar",v->{
+   String mail=email.getText().toString().trim(),pwd=pass.getText().toString();
+   String display=register?name.getText().toString().trim():"";
+   if(register&&display.length()<2){error.setText("Informe seu nome.");return;}
+   if(!android.util.Patterns.EMAIL_ADDRESS.matcher(mail).matches()){error.setText("Informe um e-mail válido.");return;}
+   if(pwd.length()<6){error.setText("A senha precisa ter pelo menos 6 caracteres.");return;}
+   error.setText("Aguarde, verificando acesso...");
+   if(register){
+    auth.createUserWithEmailAndPassword(mail,pwd).addOnSuccessListener(result->{
+     FirebaseUser created=result.getUser();if(created==null){error.setText("Não foi possível criar a conta.");return;}
+     java.util.Map<String,Object> data=new java.util.HashMap<>();data.put("uid",created.getUid());data.put("nome",display);data.put("email",mail);data.put("ultimoAcesso",FieldValue.serverTimestamp());
+     db.collection("usuarios").document(created.getUid()).set(data,SetOptions.merge())
+      .addOnSuccessListener(ok->finishAuthentication(error))
+      .addOnFailureListener(e->{auth.signOut();error.setText("Cadastro criado, mas o perfil não foi salvo: "+e.getMessage());});
+    }).addOnFailureListener(e->error.setText("Não foi possível cadastrar: "+e.getMessage()));
+   }else{
+    auth.signInWithEmailAndPassword(mail,pwd).addOnSuccessListener(result->finishAuthentication(error))
+     .addOnFailureListener(e->error.setText("Não foi possível entrar: "+e.getMessage()));
+   }
+  });
+  button(register?"Já tenho conta • Entrar":"Não tenho conta • Criar cadastro",v->showAuthentication(!register));
+ }
+ private void finishAuthentication(TextView error){
+  AccountSession.ensure(this,true,(allowed,reason)->{
+   if(isFinishing())return;
+   if(!allowed){auth.signOut();error.setText(reason.startsWith("Acesso limitado")?reason:"Acesso limitado: "+reason);return;}
+   startActivity(new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();
+  });
+ }
+ void render(){if(profileSessionListener!=null){profileSessionListener.remove();profileSessionListener=null;}root.removeAllViews();TextView title=label("◉  MEU PERFIL",27,0xffef4356);title.setTypeface(null,1);root.addView(title);identity=label("Conta não conectada",17,Color.WHITE);if(auth.getCurrentUser()==null)root.addView(identity);else profileHeader(auth.getCurrentUser());vip=label("Assinatura: não verificada",15,0xffb7c2d1);if(auth.getCurrentUser()==null)root.addView(vip);
+ FirebaseUser user=auth.getCurrentUser();if(user!=null){registerProfile(user);identity.setText(user.getEmail()==null?"Usuário conectado":user.getEmail());db.collection("usuarios").document(user.getUid()).get().addOnSuccessListener(d->{if(isFinishing())return;Boolean active=d.getBoolean("vipAtivo");com.google.firebase.Timestamp until=d.getTimestamp("vipAte");boolean valid=Boolean.TRUE.equals(active)&&until!=null&&until.toDate().getTime()>System.currentTimeMillis();vip.setText(valid?"VIP ativo até "+new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(until.toDate()):"Assinatura vencida ou não ativa");}).addOnFailureListener(e->vip.setText("Não foi possível consultar a assinatura"));button("Sair da conta",v->{AccountSession.release(this,()->{auth.signOut();startActivity(new Intent(this,ProfileActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();});});}
+ else{showAuthentication(false);}
  if(user==null)return;
  TextView library=label("MINHA BIBLIOTECA",19,Color.WHITE);library.setTypeface(null,1);root.addView(library);button("♥  Minha lista",v->startActivity(new Intent(this,FavoritesActivity.class)));button("▶  Continuar assistindo",v->startActivity(new Intent(this,ContinueWatchingActivity.class)));button("♛  Minha assinatura",v->new AlertDialog.Builder(this).setMessage(vip.getText()).setPositiveButton("OK",null).show());TextView security=label("SEGURANÇA E PRIVACIDADE",19,Color.WHITE);security.setTypeface(null,1);root.addView(security);
  root.addView(label("Proteja as categorias adultas com um PIN de 4 números. O PIN inicial é 0000. Após alterar, o PIN anterior deixa de funcionar.",14,0xffbfc0ca));button("🔒  Alterar PIN de conteúdo adulto",v->AdultProtection.changePin(this));button("🔐  Bloquear conteúdo adulto agora",v->{AdultProtection.lock();Toast.makeText(this,"Conteúdo adulto bloqueado.",Toast.LENGTH_SHORT).show();});
