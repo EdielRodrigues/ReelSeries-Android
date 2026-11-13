@@ -302,15 +302,22 @@ public class AdminActivity extends Activity {
  private void manageCustomerSessions(String uid,int current){
   String[] choices={"1 acesso","2 acessos","3 acessos","4 acessos","5 acessos","6 acessos","8 acessos","10 acessos"};
   int[] values={1,2,3,4,5,6,8,10};
-  new AlertDialog.Builder(this).setTitle("Acessos com o mesmo e-mail")
-   .setMessage("Quantidade de aparelhos simultâneos permitidos. Ao reduzir o limite, as sessões excedentes precisarão ser encerradas.")
-   .setSingleChoiceItems(choices,java.util.Arrays.binarySearch(values,current)>=0?java.util.Arrays.binarySearch(values,current):0,(dialog,which)->{
+  int selected=java.util.Arrays.binarySearch(values,current);
+  // AlertDialog.setMessage() and setSingleChoiceItems() share the same content area;
+  // using both hides the options on several Android versions.
+  new AlertDialog.Builder(this)
+   .setTitle("Acessos autorizados • atual: "+current)
+   .setSingleChoiceItems(choices,selected>=0?selected:0,(dialog,which)->{
     dialog.dismiss();
-    if(!authorized)return;
-    firestore.collection("usuarios").document(uid).update("maxAcessos",values[which],"alteradoPor",auth.getCurrentUser().getUid(),"alteradoEm",com.google.firebase.firestore.FieldValue.serverTimestamp())
+    if(!authorized||auth.getCurrentUser()==null)return;
+    firestore.collection("usuarios").document(uid)
+     .update("maxAcessos",values[which],"alteradoPor",auth.getCurrentUser().getUid(),
+       "alteradoEm",com.google.firebase.firestore.FieldValue.serverTimestamp())
      .addOnSuccessListener(v->{msg("Limite alterado para "+values[which]+" acesso(s).");userDetail(uid,"",false);})
      .addOnFailureListener(e->msg("Falha ao alterar acessos: "+e.getMessage()));
-   }).setNegativeButton("Cancelar",null).show();
+   })
+   .setNegativeButton("Cancelar",null)
+   .show();
  }
  private void chooseExpiryDate(String uid){
   java.util.Calendar now=java.util.Calendar.getInstance();
