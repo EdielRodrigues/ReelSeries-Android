@@ -23,6 +23,11 @@ public class DetailsActivity extends Activity {
  String url=LocalCatalog.first(o,"url","video","link","stream","stream_url","video_url","play_url","source","src");Button play=new Button(this);play.setAllCaps(false);play.setText("▶  Assistir agora");play.setTextSize(18);play.setTextColor(0xffffffff);play.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xffe6384b));heroControls.addView(play,new LinearLayout.LayoutParams(-1,dp(58)));
  play.setEnabled(url.startsWith("http"));if(!url.startsWith("http"))play.setText(SeriesHelper.isSeries(o)?"Selecione um episódio abaixo":"Vídeo indisponível");play.setOnClickListener(v->{Intent i=new Intent(this,PlayerActivity.class);i.putExtra("url",url);i.putExtra("name",o.optString("nome"));i.putExtra("capa",LocalCatalog.first(o,"capa","tvg-logo","tvg_logo","logo","imagem","image","poster","backdrop"));i.putExtra("adult",AdultProtection.adult(o));attachPlaylist(i,url);AdultProtection.require(this,AdultProtection.adult(o),()->startActivity(i));});
  Button favorite=new Button(this);favorite.setAllCaps(false);String favKey=o.optString("nome");android.content.SharedPreferences prefs=UserMediaState.prefs(this,"reel_favorites");Runnable updateFav=()->favorite.setText(prefs.getBoolean(favKey,false)?"♥  Remover dos favoritos":"♡  Adicionar aos favoritos");updateFav.run();favorite.setOnClickListener(v->{prefs.edit().putBoolean(favKey,!prefs.getBoolean(favKey,false)).apply();updateFav.run();});favorite.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff33333b));favorite.setTextColor(0xffffffff);heroControls.addView(favorite);
+ if(url.matches("(?is)^https?://[^/]+/live/.*")){
+  root.addView(sectionTitle("Programação do canal"));
+  TextView guide=text("Carregando programação...",14,0xffcbd5e1);root.addView(guide);
+  EpgGuide.load(this,o.optString("id",""),guide);
+ }
  root.addView(sectionTitle("Sinopse"));String synopsis=o.optString("sinopse","").trim();root.addView(text(synopsis.isEmpty()?"Sinopse não informada.":synopsis,15,0xffcbd5e1));
  if(SeriesHelper.isSeries(o))showSeasons(root,o);
  root.addView(sectionTitle("Informações"));root.addView(text("Título: "+o.optString("nome")+"\nCategoria: "+o.optString("categoria")+(episode.isEmpty()?"":"\nEpisódio: "+episode)+"\nFonte: catálogo Reel Séries",14,0xff9ca3af));

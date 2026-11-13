@@ -633,6 +633,7 @@ public class AdminActivity extends Activity {
   button("▤  FILMES",()->xtreamStart("movie"));
   button("▣  TV AO VIVO",()->xtreamStart("live"));
   button("↻  SINCRONIZAR TUDO",()->xtreamStart("all"));
+  button("▣  ATUALIZAR PROGRAMAÇÃO TV (EPG)",this::xtreamSyncEpg);
   section("Atualização automática");
   android.widget.Switch automatic=new android.widget.Switch(this);
   automatic.setText("Atualizar ao abrir o ADM (intervalo mínimo de 24 horas)");automatic.setTextColor(Color.WHITE);
@@ -718,6 +719,28 @@ public class AdminActivity extends Activity {
     else msg("Importação parcial ("+count+"): "+android.text.TextUtils.join("; ",errors));
     getSharedPreferences("xtream_admin",MODE_PRIVATE).edit().putLong("last_sync",System.currentTimeMillis()).apply();
    }catch(Exception e){msg("Falha Xtream: "+xtreamSafeError(e));}finally{busy=false;}
+  });
+ }
+ private void xtreamSyncEpg(){
+  if(!authorized||busy){msg("Aguarde a operação atual.");return;}
+  String base=xtreamPref("host"),user=xtreamPref("user"),pass;
+  try{pass=XtreamCredentials.load(this);}catch(Exception e){msg("Senha Xtream indisponível.");return;}
+  if(base.isEmpty()||user.isEmpty()||pass.isEmpty()){msg("Salve a conexão Xtream primeiro.");return;}
+  busy=true;msg("Atualizando guia de programação dos canais...");
+  worker.execute(()->{
+   try{
+    xtreamAuthenticate(base,user,pass);
+    final java.util.concurrent.CountDownLatch latch=new java.util.concurrent.CountDownLatch(1);
+    FirebaseCatalogSync.withToken(auth,token->{
+     new Thread(()->{try{
+      int count=EpgGuide.publish(this,catalog,base,user,pass,token,n->msg("EPG: "+n+" canais consultados"));
+      msg("Guia atualizado: "+count+" canais com programação.");
+     }catch(Exception e){msg("Falha ao atualizar EPG: "+xtreamSafeError(e));}
+     finally{latch.countDown();}},"epg-upload").start();
+    },e->{msg("Falha de autenticação Firebase: "+e);latch.countDown();});
+    latch.await();
+   }catch(Exception e){msg("Falha Xtream EPG: "+xtreamSafeError(e));}
+   finally{busy=false;}
   });
  }
  private void iptvCredentialsDialog(){xtreamPanel();}
