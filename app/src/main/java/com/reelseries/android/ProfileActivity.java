@@ -8,37 +8,48 @@ public class ProfileActivity extends Activity {
  void button(String text,View.OnClickListener click){Button b=new Button(this);b.setAllCaps(false);b.setText(text);b.setTextSize(16);b.setTextColor(Color.WHITE);b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff292932));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(52));lp.bottomMargin=dp(9);root.addView(b,lp);b.setOnClickListener(click);}
  private final int[] avatarImages={R.drawable.avatar_1,R.drawable.avatar_2,R.drawable.avatar_3,R.drawable.avatar_4,R.drawable.avatar_5,R.drawable.avatar_6};
  private int avatarIndex(){return getSharedPreferences("reel_avatar",MODE_PRIVATE).getInt("avatar_"+(auth.getCurrentUser()==null?"":auth.getCurrentUser().getUid()),0);}
+ private android.graphics.drawable.GradientDrawable roundBg(int color,int radius){android.graphics.drawable.GradientDrawable d=new android.graphics.drawable.GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
+ private ImageView avatarView(int index,int size,boolean selected){
+  ImageView img=new ImageView(this);img.setImageResource(avatarImages[index]);img.setScaleType(ImageView.ScaleType.FIT_CENTER);
+  img.setPadding(dp(selected?3:2),dp(selected?3:2),dp(selected?3:2),dp(selected?3:2));
+  android.graphics.drawable.GradientDrawable border=roundBg(0xff252630,100);border.setStroke(dp(selected?3:1),selected?0xffff3d73:0xffa6a8b2);img.setBackground(border);
+  return img;
+ }
+ private void chooseAvatar(int chosen){FirebaseUser u=auth.getCurrentUser();if(u==null)return;getSharedPreferences("reel_avatar",MODE_PRIVATE).edit().putInt("avatar_"+u.getUid(),chosen).apply();render();}
  private void showAvatarPicker(){
-  LinearLayout options=new LinearLayout(this);options.setOrientation(LinearLayout.VERTICAL);
-  final AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Escolha seu avatar").setView(options).setNegativeButton("Cancelar",null).create();
-  for(int i=0;i<avatarImages.length;i++){
-   final int chosen=i;ImageView img=new ImageView(this);img.setImageResource(avatarImages[i]);img.setScaleType(ImageView.ScaleType.FIT_CENTER);
-   LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(82),dp(82));lp.gravity=android.view.Gravity.CENTER;lp.bottomMargin=dp(6);options.addView(img,lp);
-   img.setOnClickListener(v->{getSharedPreferences("reel_avatar",MODE_PRIVATE).edit().putInt("avatar_"+auth.getCurrentUser().getUid(),chosen).apply();dialog.dismiss();render();});
-  }dialog.show();
+  final AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Escolha seu avatar").setNegativeButton("Cancelar",null).create();
+  android.widget.HorizontalScrollView scroll=new android.widget.HorizontalScrollView(this);scroll.setFillViewport(true);
+  LinearLayout options=new LinearLayout(this);options.setOrientation(LinearLayout.HORIZONTAL);options.setPadding(dp(12),dp(18),dp(12),dp(18));scroll.addView(options);
+  for(int i=0;i<avatarImages.length;i++){final int chosen=i;ImageView img=avatarView(i,76,i==avatarIndex());LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(76),dp(76));lp.rightMargin=dp(9);options.addView(img,lp);img.setOnClickListener(v->{dialog.dismiss();chooseAvatar(chosen);});}
+  dialog.setView(scroll);dialog.show();
  }
  private void profileHeader(FirebaseUser user){
-  LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);row.setGravity(android.view.Gravity.CENTER_VERTICAL);root.addView(row);
-  ImageView image=new ImageView(this);image.setImageResource(avatarImages[Math.max(0,Math.min(avatarImages.length-1,avatarIndex()))]);
-  image.setScaleType(ImageView.ScaleType.FIT_CENTER);row.addView(image,new LinearLayout.LayoutParams(dp(84),dp(84)));image.setOnClickListener(v->showAvatarPicker());
-  LinearLayout texts=new LinearLayout(this);texts.setOrientation(LinearLayout.VERTICAL);texts.setPadding(dp(12),0,0,0);row.addView(texts,new LinearLayout.LayoutParams(0,-2,1));
-  identity=label(user.getEmail()==null?"Usuário conectado":user.getEmail(),16,Color.WHITE);texts.addView(identity);
-  sessionCount=label("Acessos: verificando...",14,0xff7ee7bd);texts.addView(sessionCount);
-  button("Escolher avatar",v->showAvatarPicker());
+  LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);row.setGravity(Gravity.CENTER_VERTICAL);LinearLayout.LayoutParams rowLp=new LinearLayout.LayoutParams(-1,-2);rowLp.topMargin=dp(20);root.addView(row,rowLp);
+  ImageView image=avatarView(Math.max(0,Math.min(avatarImages.length-1,avatarIndex())),98,true);row.addView(image,new LinearLayout.LayoutParams(dp(98),dp(98)));image.setOnClickListener(v->showAvatarPicker());
+  View separator=new View(this);separator.setBackgroundColor(0xff888a96);LinearLayout.LayoutParams lineLp=new LinearLayout.LayoutParams(dp(1),dp(86));lineLp.leftMargin=dp(14);lineLp.rightMargin=dp(12);row.addView(separator,lineLp);
+  LinearLayout texts=new LinearLayout(this);texts.setOrientation(LinearLayout.VERTICAL);row.addView(texts,new LinearLayout.LayoutParams(0,-2,1));
+  identity=label(user.getEmail()==null?"Usuário conectado":user.getEmail(),15,Color.WHITE);identity.setPadding(0,0,0,dp(10));identity.setSingleLine(false);texts.addView(identity);
+  sessionCount=label("Acessos: verificando...",12,0xfff0f0f5);sessionCount.setPadding(dp(8),dp(6),dp(8),dp(6));android.graphics.drawable.GradientDrawable pill=roundBg(0xff24252d,24);pill.setStroke(dp(1),0xff8d8e9c);sessionCount.setBackground(pill);texts.addView(sessionCount);
+  LinearLayout heading=new LinearLayout(this);heading.setGravity(Gravity.CENTER_VERTICAL);LinearLayout.LayoutParams hlp=new LinearLayout.LayoutParams(-1,-2);hlp.topMargin=dp(18);root.addView(heading,hlp);
+  TextView choose=label("Escolha seu avatar",14,0xffe4e5ed);choose.setPadding(0,dp(6),0,dp(6));heading.addView(choose,new LinearLayout.LayoutParams(0,-2,1));TextView more=label("Ver mais  ›",14,0xffff4779);more.setPadding(dp(4),dp(6),0,dp(6));heading.addView(more);more.setOnClickListener(v->showAvatarPicker());
+  android.widget.HorizontalScrollView scroll=new android.widget.HorizontalScrollView(this);scroll.setHorizontalScrollBarEnabled(false);LinearLayout.LayoutParams slp=new LinearLayout.LayoutParams(-1,dp(76));slp.topMargin=dp(5);root.addView(scroll,slp);
+  LinearLayout strip=new LinearLayout(this);strip.setGravity(Gravity.CENTER_VERTICAL);scroll.addView(strip);
+  for(int i=0;i<avatarImages.length;i++){final int selected=i;ImageView avatar=avatarView(i,62,i==avatarIndex());LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(dp(62),dp(62));ap.rightMargin=dp(10);strip.addView(avatar,ap);avatar.setOnClickListener(v->chooseAvatar(selected));}
+  View divider=new View(this);divider.setBackgroundColor(0xff3b3b47);LinearLayout.LayoutParams dlp=new LinearLayout.LayoutParams(-1,dp(1));dlp.topMargin=dp(16);dlp.bottomMargin=dp(12);root.addView(divider,dlp);
   if(profileSessionListener!=null)profileSessionListener.remove();
   profileSessionListener=db.collection("usuarios").document(user.getUid()).addSnapshotListener(this,(doc,error)->{
    if(isFinishing()||doc==null||error!=null)return;
    Long allowed=doc.getLong("maxAcessos");int max=allowed==null?1:Math.max(1,allowed.intValue());int count=0;
    Object raw=doc.get("sessoesAtivas");if(raw instanceof java.util.Map){for(Object stamp:((java.util.Map<?,?>)raw).values())if(stamp instanceof Number && System.currentTimeMillis()-((Number)stamp).longValue()<2L*60*60*1000)count++;}
-   sessionCount.setText("Acessos: "+count+" de "+max+" conectados");
+   sessionCount.setText("▣  Acessos: "+count+" de "+max+" conectados");
   });
  }
  @Override protected void onDestroy(){if(profileSessionListener!=null)profileSessionListener.remove();super.onDestroy();}
- @Override public void onCreate(Bundle b){super.onCreate(b);auth=FirebaseAuth.getInstance();db=FirebaseFirestore.getInstance();getWindow().setStatusBarColor(bg);ScrollView scroll=new ScrollView(this);root=new LinearLayout(this);root.setOrientation(1);root.setPadding(dp(22),dp(18),dp(22),dp(28));root.setBackgroundColor(bg);scroll.addView(root);setContentView(scroll);render();ApkUpdateChecker.check(this);}
+ @Override public void onCreate(Bundle b){super.onCreate(b);auth=FirebaseAuth.getInstance();db=FirebaseFirestore.getInstance();getWindow().setStatusBarColor(bg);ScrollView scroll=new ScrollView(this);root=new LinearLayout(this);root.setOrientation(1);root.setPadding(dp(22),dp(24),dp(22),dp(28));root.setBackgroundColor(bg);scroll.addView(root);setContentView(scroll);render();ApkUpdateChecker.check(this);}
  @Override protected void onResume(){super.onResume();ApkUpdateChecker.check(this);}
  void registerProfile(FirebaseUser user){if(user==null)return;java.util.Map<String,Object> data=new java.util.HashMap<>();data.put("email",user.getEmail()==null?"":user.getEmail());data.put("uid",user.getUid());data.put("ultimoAcesso",com.google.firebase.firestore.FieldValue.serverTimestamp());db.collection("usuarios").document(user.getUid()).set(data,com.google.firebase.firestore.SetOptions.merge()).addOnFailureListener(e->android.util.Log.w("ReelPerfil","Falha ao registrar perfil",e));}
  void showBlocked(){new AlertDialog.Builder(this).setTitle("Acesso bloqueado").setMessage("Este perfil foi bloqueado pela administração do Reel Séries.").setCancelable(false).setPositiveButton("Sair da conta",(d,w)->{auth.signOut();finishAffinity();}).show();}
- void render(){root.removeAllViews();TextView title=label("◉  MEU PERFIL",27,0xffef4356);title.setTypeface(null,1);root.addView(title);identity=label("Conta não conectada",17,Color.WHITE);if(auth.getCurrentUser()==null)root.addView(identity);else profileHeader(auth.getCurrentUser());vip=label("Assinatura: não verificada",15,0xffb7c2d1);root.addView(vip);
+ void render(){root.removeAllViews();TextView title=label("◉  MEU PERFIL",27,0xffef4356);title.setTypeface(null,1);root.addView(title);identity=label("Conta não conectada",17,Color.WHITE);if(auth.getCurrentUser()==null)root.addView(identity);else profileHeader(auth.getCurrentUser());vip=label("Assinatura: não verificada",15,0xffb7c2d1);if(auth.getCurrentUser()==null)root.addView(vip);
  FirebaseUser user=auth.getCurrentUser();if(user!=null){registerProfile(user);identity.setText(user.getEmail()==null?"Usuário conectado":user.getEmail());db.collection("usuarios").document(user.getUid()).get().addOnSuccessListener(d->{if(isFinishing())return;Boolean active=d.getBoolean("vipAtivo");com.google.firebase.Timestamp until=d.getTimestamp("vipAte");boolean valid=Boolean.TRUE.equals(active)&&until!=null&&until.toDate().getTime()>System.currentTimeMillis();vip.setText(valid?"VIP ativo até "+new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(until.toDate()):"Assinatura vencida ou não ativa");}).addOnFailureListener(e->vip.setText("Não foi possível consultar a assinatura"));button("Sair da conta",v->AccountSession.release(this,()->{auth.signOut();finishAffinity();}));}
  else{EditText email=new EditText(this);email.setSingleLine();email.setHint("E-mail");email.setTextColor(-1);email.setHintTextColor(0xffaaaaaa);root.addView(email);EditText pass=new EditText(this);pass.setHint("Senha");pass.setTextColor(-1);pass.setHintTextColor(0xffaaaaaa);pass.setInputType(129);root.addView(pass);TextView msg=label("",13,0xffff8b96);root.addView(msg);button("Entrar",v->auth.signInWithEmailAndPassword(email.getText().toString().trim(),pass.getText().toString()).addOnSuccessListener(r->AccountSession.ensure(this,true,(allowed,reason)->{if(!allowed){auth.signOut();msg.setText(reason);return;}startActivity(new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();})).addOnFailureListener(e->msg.setText(e.getMessage())));button("Criar conta",v->auth.createUserWithEmailAndPassword(email.getText().toString().trim(),pass.getText().toString()).addOnSuccessListener(r->AccountSession.ensure(this,true,(allowed,reason)->{if(!allowed){auth.signOut();msg.setText(reason);return;}startActivity(new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();})).addOnFailureListener(e->msg.setText(e.getMessage())));}
  if(user==null)return;
