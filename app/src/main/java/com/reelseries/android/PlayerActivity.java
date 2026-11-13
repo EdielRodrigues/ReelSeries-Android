@@ -179,12 +179,25 @@ public class PlayerActivity extends Activity {
   FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams((int)(48*getResources().getDisplayMetrics().density),(int)(48*getResources().getDisplayMetrics().density),Gravity.TOP|Gravity.END);
   cp.setMargins(0,(int)(8*getResources().getDisplayMetrics().density),(int)(14*getResources().getDisplayMetrics().density),0);
   root.addView(castButton,cp);
+  // Keep Cast inside the visible touch-safe area on phones with cutouts/system bars.
+  // The video may extend edge-to-edge, but the Cast control must remain reachable.
+  root.setOnApplyWindowInsetsListener((view,insets)->{
+   FrameLayout.LayoutParams castParams=(FrameLayout.LayoutParams)castButton.getLayoutParams();
+   int safeTop=Math.max(insets.getSystemWindowInsetTop(),0);
+   int safeRight=Math.max(insets.getSystemWindowInsetRight(),0);
+   castParams.topMargin=dpCast(8)+safeTop;
+   castParams.rightMargin=dpCast(14)+safeRight;
+   castButton.setLayoutParams(castParams);
+   return insets;
+  });
+  castButton.bringToFront();
   castStateLabel=new TextView(this);
   castStateLabel.setTextColor(0xff48dca5);castStateLabel.setTextSize(11);castStateLabel.setGravity(Gravity.CENTER);
   castStateLabel.setBackgroundColor(0xaa101820);
   FrameLayout.LayoutParams sp=new FrameLayout.LayoutParams((int)(105*getResources().getDisplayMetrics().density),(int)(24*getResources().getDisplayMetrics().density),Gravity.TOP|Gravity.END);
   sp.topMargin=(int)(57*getResources().getDisplayMetrics().density);sp.rightMargin=(int)(6*getResources().getDisplayMetrics().density);
   root.addView(castStateLabel,sp);castStateLabel.setVisibility(View.GONE);
+  castButton.bringToFront();
   castButton.setOnClickListener(v->showTransmissionOptions());
   castListener=new SessionManagerListener<CastSession>(){
    @Override public void onSessionStarted(CastSession session,String id){sendToTv(session);updateCastState();handler.postDelayed(()->showTvControls(),650);}

@@ -84,7 +84,7 @@ public class MainActivity extends Activity {
  ImageView homeCast=homeCastIcon;
  homeCast.setImageResource(R.drawable.ic_cast_desconectado);
  homeCast.setScaleType(ImageView.ScaleType.FIT_CENTER);
- homeCast.setPadding(dp(7),dp(12),dp(7),dp(12));
+ homeCast.setPadding(dp(9),dp(14),dp(9),dp(14));
  homeCast.setContentDescription("Conectar à TV pelo Google Cast");
  homeCast.setClickable(true);
  homeCast.setOnClickListener(v->{
@@ -95,7 +95,6 @@ public class MainActivity extends Activity {
  });
  header.addView(homeCast,new LinearLayout.LayoutParams(dp(headerIconDp),dp(48)));
  TextView searchIcon=navText("⌕",30);header.addView(searchIcon,new LinearLayout.LayoutParams(dp(headerIconDp),dp(48)));searchIcon.setOnClickListener(v->{search.requestFocus();((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(search,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});
- TextView profile=navText("◉",24);header.addView(profile,new LinearLayout.LayoutParams(dp(headerIconDp),dp(48)));profile.setOnClickListener(v->startActivity(new Intent(this,ProfileActivity.class)));
  TextView admin=navText("⚙",22);
  admin.setVisibility(View.GONE);
  header.addView(admin,new LinearLayout.LayoutParams(dp(headerIconDp),dp(48)));
@@ -347,7 +346,7 @@ public class MainActivity extends Activity {
   TextView title=navText("REEL SÉRIES",19);title.setTypeface(null,1);title.setTextColor(0xffff5269);panel.addView(title);
   TextView home=navText("⌂  Início",17);home.setPadding(dp(10),dp(20),0,dp(18));panel.addView(home);home.setOnClickListener(v->{drawer.dismiss();channelGroup="";chooseCategory("Todos");});
   if(com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser()!=null){
-   TextView receive=navText("↓  Receber atualizações do Firebase",16);
+   TextView receive=navText("↓  Receber atualizações",16);
    receive.setPadding(dp(10),dp(12),0,dp(12));receive.setTextColor(0xff7ee7bd);panel.addView(receive);
    receive.setOnClickListener(v->{drawer.dismiss();forceCloudUpdate();});
   }
