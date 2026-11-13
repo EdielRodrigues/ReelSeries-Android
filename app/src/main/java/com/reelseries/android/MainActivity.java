@@ -31,7 +31,13 @@ public class MainActivity extends Activity {
     if(isFinishing()||error!=null||doc==null||!next.equals(observedAccessUid))return;
     // The global guard verifies the ADM role. This listener keeps the home page
     // responsive to changes even when the client stays on MainActivity.
-    if(Boolean.TRUE.equals(doc.getBoolean("bloqueado"))){
+    if(sessionReady && !AccountSession.isListed(this,doc)){
+    sessionReady=false;
+    com.google.firebase.auth.FirebaseAuth.getInstance().signOut();
+    startActivity(new Intent(this,ProfileActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();return;
+   }
+   processCustomerUpdate(doc);
+   if(Boolean.TRUE.equals(doc.getBoolean("bloqueado"))){
      com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("admins").document(next).get()
       .addOnSuccessListener(adm->{if(!adm.exists())openBlockedScreen("Sua conta foi bloqueada pela administração.");});
     }else{
@@ -574,7 +580,7 @@ public class MainActivity extends Activity {
   android.view.ViewGroup.LayoutParams params=grid.getLayoutParams();
   if(params!=null&&params.height!=height){params.height=height;grid.setLayoutParams(params);}
  }
- @Override protected void onResume(){super.onResume();handler.removeCallbacks(homeCastStatusUpdater);handler.post(homeCastStatusUpdater);
+ @Override protected void onResume(){super.onResume();verifyDeviceSession();checkCustomerUpdateOnOpen();handler.removeCallbacks(homeCastStatusUpdater);handler.post(homeCastStatusUpdater);
  if(com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser()==null){
   startActivity(new Intent(this,ProfileActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();return;
  }
@@ -591,7 +597,56 @@ public class MainActivity extends Activity {
   android.view.ViewGroup.LayoutParams heroLp=featuredHero.getLayoutParams();
   if(heroLp!=null){heroLp.height=Math.max(dp(390),imageHeight+dp(265));featuredHero.setLayoutParams(heroLp);}
  }
- void loadCover(String url,ImageView image){if(url.equals(image.getTag()) && image.getDrawable()!=null)return;image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);fitFeaturedImage(image,hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag())){image.setImageBitmap(bitmap);fitFeaturedImage(image,bitmap);}});}}catch(Exception ignored){}});}
+ void loadCover(String url,ImageView image){if(url.equals(image.getTag()) && image.getDrawable()!=null)return;image.setTag(url);Bitmap hit=cache.get(url);if(hit!=null){image.setImageBitmap(hit);fitFeaturedImage(image,hit);return;}image.setImageDrawable(null);if(!url.startsWith("https://")&&!url.startsWith("http://"))return;pool.execute(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(4500);c.setReadTimeout(5000);c.setInstanceFollowRedirects(true);InputStream in=c.getInputStream();BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;Bitmap bitmap=BitmapFactory.decodeStream(in,null,opts);in.close();c.disconnect();if(bitmap!=null){cache.put(url,bitmap);runOnUiThread(()->{if(url.equals(image.getTag())){image.setImageBitmap(bitmap);fitFeaturedImage(image,bitmap);}});}}catch(Exception ignored){}});}
+ private boolean sessionReady=false;
+ private boolean sessionChecking=false;
+ private final java.util.concurrent.atomic.AtomicBoolean remoteUpdateBusy=new java.util.concurrent.atomic.AtomicBoolean(false);
+ private void verifyDeviceSession(){
+  if(sessionChecking || com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser()==null)return;
+  sessionChecking=true;
+  AccountSession.ensure(this,false,(allowed,reason)->{
+   sessionChecking=false;if(isFinishing())return;
+   if(!allowed){sessionReady=false;new AlertDialog.Builder(this).setTitle("Acesso não autorizado")
+    .setMessage(reason).setCancelable(false).setPositiveButton("Voltar ao login",(d,w)->{
+     com.google.firebase.auth.FirebaseAuth.getInstance().signOut();
+     startActivity(new Intent(this,ProfileActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();}).show();return;}
+   sessionReady=true;checkCustomerUpdateOnOpen();
+  });
+ }
+ private void checkCustomerUpdateOnOpen(){
+  com.google.firebase.auth.FirebaseUser user=com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
+  if(user==null)return;
+  com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("usuarios").document(user.getUid()).get()
+   .addOnSuccessListener(this::processCustomerUpdate);
+ }
+ private void processCustomerUpdate(com.google.firebase.firestore.DocumentSnapshot doc){
+  if(!sessionReady||doc==null||!doc.exists()||isFinishing())return;
+  Object obj=doc.get("atualizacaoPendente");if(!(obj instanceof java.util.Map))return;
+  java.util.Map<?,?> command=(java.util.Map<?,?>)obj;
+  String id=String.valueOf(command.get("id")),folder=String.valueOf(command.get("categoria"));
+  if(!folder.equals("catalogo_1_series")&&!folder.equals("catalogo_2_filmes")&&!folder.equals("catalogo_3_iptv"))return;
+  android.content.SharedPreferences pref=getSharedPreferences("reel_cloud_cache_v194",MODE_PRIVATE);
+  if(id.equals(pref.getString("last_customer_command","")))return;
+  long now=System.currentTimeMillis(),last=pref.getLong("last_check",0);
+  if(last>0 && now>=last && now-last<CLOUD_INTERVAL_MS)return;
+  if(!remoteUpdateBusy.compareAndSet(false,true))return;
+  if(!cloudBusy.compareAndSet(false,true)){remoteUpdateBusy.set(false);return;}
+  pool.execute(()->{
+   try{
+    int n;java.util.ArrayList<String> cats;
+    try(LocalCatalog db=new LocalCatalog(this)){
+     n=FirebaseCatalogSync.downloadCategory(this,db,folder,c->runOnUiThread(()->{if(status!=null)status.setText("Atualização solicitada pelo ADM: "+c+" registros");}));
+     cats=db.categories();
+    }
+    pref.edit().putString("last_customer_command",id).putLong("last_check",System.currentTimeMillis()).apply();
+    runOnUiThread(()->{if(isFinishing())return;for(String c:cats)if(!catNames.contains(c))catNames.add(c);
+     if(categories!=null&&categories.getAdapter()!=null)((ArrayAdapter)categories.getAdapter()).notifyDataSetChanged();
+     getSharedPreferences("reel_folder_cache_v1",MODE_PRIVATE).edit().remove("folders").apply();invalidateSavedPages();resetFeed();
+     if(status!=null)status.setText("Atualização do ADM concluída: "+n+" registros");});
+   }catch(Exception e){runOnUiThread(()->{if(status!=null)status.setText("Atualização do ADM pendente: "+e.getMessage());});}
+   finally{cloudBusy.set(false);remoteUpdateBusy.set(false);}
+  });
+ }
  @Override protected void onDestroy(){if(heroTicker!=null)handler.removeCallbacks(heroTicker);if(heroBatchTicker!=null)handler.removeCallbacks(heroBatchTicker);catalogQueries.shutdownNow();pool.shutdownNow();if(accessSubscription!=null)accessSubscription.remove();super.onDestroy();}
 
 

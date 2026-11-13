@@ -264,6 +264,14 @@ public class AdminActivity extends Activity {
    actionGrid(new String[]{"30 dias","60 dias","90 dias","180 dias","1 ano"},
     new Runnable[]{()->renewCustomer(uid,30),()->renewCustomer(uid,60),()->renewCustomer(uid,90),()->renewCustomer(uid,180),()->renewCustomer(uid,365)});
    button("▦  Definir vencimento manualmente",()->chooseExpiryDate(uid));
+   detailHeading("Atualizações deste cliente");
+   button("↓  Atualizar séries e episódios neste aparelho",()->requestCustomerUpdate(uid,"catalogo_1_series"));
+   button("↓  Atualizar filmes neste aparelho",()->requestCustomerUpdate(uid,"catalogo_2_filmes"));
+   button("↓  Atualizar TV ao vivo neste aparelho",()->requestCustomerUpdate(uid,"catalogo_3_iptv"));
+   detailHeading("Acessos simultâneos");
+   Long allowed=doc.getLong("maxAcessos");
+   int max=allowed==null?1:Math.max(1,allowed.intValue());
+   button("▣  Gerenciar acessos • "+max+" autorizado(s)",()->manageCustomerSessions(uid,max));
    detailHeading("Gerenciar acesso");
    if(!email.equals("Sem e-mail")){
     String mail=email;
@@ -275,6 +283,34 @@ public class AdminActivity extends Activity {
    }
    button("←  Voltar aos clientes",this::manageUsers);
   }).addOnFailureListener(e->msg("Erro ao carregar perfil: "+e.getMessage()));
+ }
+ private void requestCustomerUpdate(String uid,String folder){
+  if(!authorized)return;
+  String label=folder.equals("catalogo_1_series")?"Séries e episódios":folder.equals("catalogo_2_filmes")?"Filmes":"TV ao vivo";
+  new AlertDialog.Builder(this).setTitle("Atualizar "+label)
+   .setMessage("Enviar uma solicitação de atualização para este cliente? A sincronização respeitará as 24 horas de intervalo do aplicativo.")
+   .setNegativeButton("Cancelar",null).setPositiveButton("Enviar",(dialog,which)->{
+    java.util.Map<String,Object> update=new java.util.HashMap<>();
+    update.put("categoria",folder);update.put("id",java.util.UUID.randomUUID().toString());
+    update.put("solicitadoEm",com.google.firebase.firestore.FieldValue.serverTimestamp());
+    update.put("solicitadoPor",auth.getCurrentUser().getUid());
+    firestore.collection("usuarios").document(uid).update("atualizacaoPendente",update,"alteradoPor",auth.getCurrentUser().getUid(),"alteradoEm",com.google.firebase.firestore.FieldValue.serverTimestamp())
+     .addOnSuccessListener(v->msg("Solicitação de "+label+" enviada ao cliente."))
+     .addOnFailureListener(e->msg("Não foi possível enviar: "+e.getMessage()));
+   }).show();
+ }
+ private void manageCustomerSessions(String uid,int current){
+  String[] choices={"1 acesso","2 acessos","3 acessos","4 acessos","5 acessos","6 acessos","8 acessos","10 acessos"};
+  int[] values={1,2,3,4,5,6,8,10};
+  new AlertDialog.Builder(this).setTitle("Acessos com o mesmo e-mail")
+   .setMessage("Quantidade de aparelhos simultâneos permitidos. Ao reduzir o limite, as sessões excedentes precisarão ser encerradas.")
+   .setSingleChoiceItems(choices,java.util.Arrays.binarySearch(values,current)>=0?java.util.Arrays.binarySearch(values,current):0,(dialog,which)->{
+    dialog.dismiss();
+    if(!authorized)return;
+    firestore.collection("usuarios").document(uid).update("maxAcessos",values[which],"alteradoPor",auth.getCurrentUser().getUid(),"alteradoEm",com.google.firebase.firestore.FieldValue.serverTimestamp())
+     .addOnSuccessListener(v->{msg("Limite alterado para "+values[which]+" acesso(s).");userDetail(uid,"",false);})
+     .addOnFailureListener(e->msg("Falha ao alterar acessos: "+e.getMessage()));
+   }).setNegativeButton("Cancelar",null).show();
  }
  private void chooseExpiryDate(String uid){
   java.util.Calendar now=java.util.Calendar.getInstance();
@@ -739,7 +775,7 @@ public class AdminActivity extends Activity {
     // Series require get_series_info and episode selection; do not invent a playable URL.
     String cat=categories.get(category);if(cat==null||cat.isEmpty())cat=type.equals("live")?"TV / IPTV":type.equals("movie")?"Filmes":"Séries";
     String key="xtream_"+LocalCatalog.hash(base+"|"+user+"|"+type+"|"+id);
-    if(type.equals("series"))catalog.saveXtream(db,key,name,cat,cover,url,description,cat,origin,id,"","",0,0);else catalog.save(db,key,name,cat,cover,url,description,cat,origin);count++;
+    if(type.equals("series"))catalog.saveXtream(db,key,name,cat,cover,url,description,"reel_tipo_series:"+cat,origin,id,"","",0,0);else catalog.save(db,key,name,cat,cover,url,description,"reel_tipo_"+type+":"+cat,origin);count++;
     if(type.equals("series"))pendingSeries.add(new String[]{id,name,cat,cover,description,key});
     if(count%150==0){db.setTransactionSuccessful();db.endTransaction();transaction=false;msg("Xtream "+type+": "+count+" registros...");db.beginTransaction();transaction=true;}
    }

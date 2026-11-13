@@ -41,6 +41,18 @@ public final class FirebaseCatalogSync {
   return base(ctx)+"/catalogo_unico/"+suffix+".json"+(token==null?"":"?auth="+URLEncoder.encode(token,"UTF-8"));
  }
  /** Three independent RTDB catalogs; original category names remain unchanged. */
+ private static String catalogPath(String category,String id,String group,String url,String origin){
+  if(origin!=null && origin.startsWith("iptv_"))return "catalogo_3_iptv";
+  if(url!=null && url.matches("(?is)^https?://[^/]+/live/.*"))return "catalogo_3_iptv";
+  if(url!=null && url.matches("(?is)^https?://[^/]+/movie/.*"))return "catalogo_2_filmes";
+  // Xtream IDs include the imported media type; group/category names may be arbitrary.
+  String key=id==null?"":id.toLowerCase(java.util.Locale.ROOT);
+  if(key.startsWith("xtream_") && group!=null && group.startsWith("xtream_parent:"))return "catalogo_1_series";
+  if(group!=null && group.startsWith("reel_tipo_live:"))return "catalogo_3_iptv";
+  if(group!=null && group.startsWith("reel_tipo_movie:"))return "catalogo_2_filmes";
+  if(group!=null && group.startsWith("reel_tipo_series:"))return "catalogo_1_series";
+  return catalogPath(category);
+ }
  private static String catalogPath(String category){
   String c=category==null?"":category.toLowerCase(java.util.Locale.ROOT);
   if(c.contains("iptv")||c.contains("tv ao vivo")||c.contains("canal")||c.equals("tv")||c.contains("televis"))return "catalogo_3_iptv";
@@ -64,7 +76,7 @@ public final class FirebaseCatalogSync {
    try(Cursor c=sql.rawQuery(query,args)){
     while(c.moveToNext()){
      String id=c.getString(0);last=id;scanned++;
-     String folder=catalogPath(c.getString(2));
+     String folder=catalogPath(c.getString(2),c.getString(0),c.getString(6),c.getString(4),c.getString(7));
      JSONObject patch=batches.get(folder);if(patch==null){patch=new JSONObject();batches.put(folder,patch);}
      patch.put(id,item(c));
     }
@@ -80,7 +92,7 @@ public final class FirebaseCatalogSync {
  public static void uploadOne(Context ctx,LocalCatalog db,String id,String token)throws Exception{
   try(Cursor c=db.getReadableDatabase().rawQuery("SELECT id,nome,categoria,capa,url,sinopse,grupo,origem,series_id,episode_id,parent_series_id,season_number,episode_number FROM media WHERE id=?",new String[]{id})){
    if(!c.moveToFirst())throw new IOException("Título não encontrado no banco local");
-   request(catalogEndpoint(ctx,catalogPath(c.getString(2)),id,token),"PUT",item(c).toString());
+   request(catalogEndpoint(ctx,catalogPath(c.getString(2),c.getString(0),c.getString(6),c.getString(4),c.getString(7)),id,token),"PUT",item(c).toString());
   }
  }
  /** Lists direct child keys without downloading the full catalog. */
