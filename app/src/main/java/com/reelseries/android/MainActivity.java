@@ -5,6 +5,8 @@ import android.app.*;import android.os.*;import android.content.*;import android
 public class MainActivity extends Activity {
  final ArrayList<JSONObject> all=new ArrayList<>(), shown=new ArrayList<>(); final java.util.HashMap<String,JSONObject> cloud=new java.util.HashMap<>();
  final ExecutorService pool=Executors.newFixedThreadPool(3); final java.util.concurrent.ExecutorService catalogQueries=Executors.newFixedThreadPool(2); final android.util.LruCache<String,Bitmap> cache=new android.util.LruCache<String,Bitmap>(24);
+ private EditText voiceFolderSearch;
+ private static final int VOICE_SEARCH_CATALOG=7401, VOICE_SEARCH_FOLDER=7402;
  GridView grid; BaseAdapter adapter; TextView status; EditText search; Spinner categories; String selected="Todas", mode="Todos", channelGroup=""; int pageOffset=0; boolean loadingPage=false, endReached=false, bundledPaging=false; TextView moreButton, previousButton, pageLabel; int currentPage=0; static final int PAGE_SIZE=60; final ArrayList<JSONObject> localPages=new ArrayList<>(); int requestVersion=0; int localCatalogCount=0; boolean catalogLoadedOnce=false; boolean pageLoadFailed=false; android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper()); Runnable pending;
  android.widget.FrameLayout featuredHero; ImageView featuredCover;
  final ArrayList<JSONObject> heroItems=new ArrayList<>(); int heroIndex=0; boolean heroActive=false;
@@ -143,7 +145,12 @@ public class MainActivity extends Activity {
  continueHeading.setOnClickListener(v->startActivity(new Intent(this,ContinueWatchingActivity.class)));
  LinearLayout continueCards=new LinearLayout(this);continueCards.setOrientation(0);continueSection.addView(continueCards);
  continueSectionView=continueSection;continueCardsView=continueCards;refreshContinueCards(continueSection,continueCards);
- search=new EditText(this);search.setSingleLine(true);search.setHint("Pesquisar filme, série ou episódio");search.setTextColor(fg);search.setHintTextColor(0xff9fa5b3);search.setBackground(rounded(0xff1b1b22,12));search.setPadding(dp(12),0,dp(12),0);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,dp(48));sp.topMargin=dp(20);content.addView(search,sp);
+ search=new EditText(this);search.setSingleLine(true);search.setHint("Pesquisar filme, série ou episódio");search.setTextColor(fg);search.setHintTextColor(0xff9fa5b3);search.setBackground(rounded(0xff1b1b22,12));search.setPadding(dp(12),0,dp(12),0);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,dp(48));sp.topMargin=dp(20);LinearLayout searchBar=new LinearLayout(this);searchBar.setGravity(Gravity.CENTER_VERTICAL);searchBar.setBackground(rounded(0xff1b1b22,12));
+ search.setBackgroundColor(android.graphics.Color.TRANSPARENT);search.setPadding(dp(12),0,dp(4),0);
+ searchBar.addView(search,new LinearLayout.LayoutParams(0,-1,1));
+ TextView voiceCatalog=voiceSearchButton();searchBar.addView(voiceCatalog,new LinearLayout.LayoutParams(dp(48),-1));
+ voiceCatalog.setOnClickListener(v->startVoiceSearch(VOICE_SEARCH_CATALOG));
+ content.addView(searchBar,sp);
  LinearLayout sort=new LinearLayout(this);sort.setGravity(Gravity.CENTER_VERTICAL);sort.setPadding(0,dp(10),0,0);content.addView(sort);TextView heading=navText("Explore o catálogo",21);heading.setTypeface(null,1);sort.addView(heading,new LinearLayout.LayoutParams(0,-2,1));categories=new Spinner(this);sort.addView(categories,new LinearLayout.LayoutParams(dp(155),dp(48)));catNames.add("Todas");categories.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,catNames));
  status=navText("Carregando catálogo...",12);status.setTextColor(0xffaeb6c7);content.addView(status);
  cloudProgress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
@@ -339,6 +346,33 @@ public class MainActivity extends Activity {
   }
   Toast.makeText(this,"Buscando atualizações do Firebase...",Toast.LENGTH_SHORT).show();loadCloud();
  }
+ private TextView voiceSearchButton(){
+  TextView mic=new TextView(this);
+  mic.setText("🎤");mic.setTextSize(22);mic.setGravity(Gravity.CENTER);
+  mic.setContentDescription("Pesquisar por voz");
+  mic.setBackground(rounded(0xff34303d,12));
+  return mic;
+ }
+ private void startVoiceSearch(int requestCode){
+  Intent intent=new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+  intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+  intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,"pt-BR");
+  intent.putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT,requestCode==VOICE_SEARCH_FOLDER?"Fale o nome da pasta":"Fale o nome do filme, série ou episódio");
+  intent.putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS,1);
+  try{startActivityForResult(intent,requestCode);}
+  catch(android.content.ActivityNotFoundException e){Toast.makeText(this,"Reconhecimento de voz indisponível neste aparelho.",Toast.LENGTH_LONG).show();}
+  catch(Exception e){Toast.makeText(this,"Não foi possível iniciar a busca por voz.",Toast.LENGTH_LONG).show();}
+ }
+ @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
+  super.onActivityResult(requestCode,resultCode,data);
+  if(resultCode!=RESULT_OK||data==null||(requestCode!=VOICE_SEARCH_CATALOG&&requestCode!=VOICE_SEARCH_FOLDER))return;
+  java.util.ArrayList<String> matches=data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);
+  if(matches==null||matches.isEmpty())return;
+  String spoken=matches.get(0);
+  if(spoken==null||spoken.trim().isEmpty())return;
+  if(requestCode==VOICE_SEARCH_CATALOG&&search!=null){search.setText(spoken);search.setSelection(search.length());}
+  else if(requestCode==VOICE_SEARCH_FOLDER&&voiceFolderSearch!=null){voiceFolderSearch.setText(spoken);voiceFolderSearch.setSelection(voiceFolderSearch.length());}
+ }
  // Painel lateral: início, perfil e grupos reais do catálogo IPTV local.
  private void showChannelSidebar(){
   final android.app.Dialog drawer=new android.app.Dialog(this);
@@ -351,7 +385,13 @@ public class MainActivity extends Activity {
    receive.setOnClickListener(v->{drawer.dismiss();forceCloudUpdate();});
   }
   TextView groupsTitle=navText("EXPLORAR PASTAS",13);groupsTitle.setTypeface(null,1);groupsTitle.setTextColor(0xffef4356);groupsTitle.setPadding(dp(10),dp(12),0,dp(10));panel.addView(groupsTitle);
-  EditText folderSearch=new EditText(this);folderSearch.setSingleLine(true);folderSearch.setHint("Buscar pasta...");folderSearch.setTextColor(Color.WHITE);folderSearch.setHintTextColor(0xff9d9da8);folderSearch.setTextSize(15);folderSearch.setPadding(dp(12),0,dp(12),0);folderSearch.setBackground(rounded(0xff272730,12));LinearLayout.LayoutParams fs=new LinearLayout.LayoutParams(-1,dp(46));fs.bottomMargin=dp(10);panel.addView(folderSearch,fs);
+  EditText folderSearch=new EditText(this);folderSearch.setSingleLine(true);folderSearch.setHint("Buscar pasta...");folderSearch.setTextColor(Color.WHITE);folderSearch.setHintTextColor(0xff9d9da8);folderSearch.setTextSize(15);folderSearch.setPadding(dp(12),0,dp(12),0);folderSearch.setBackground(rounded(0xff272730,12));LinearLayout.LayoutParams fs=new LinearLayout.LayoutParams(-1,dp(46));fs.bottomMargin=dp(10);LinearLayout folderSearchBar=new LinearLayout(this);folderSearchBar.setGravity(Gravity.CENTER_VERTICAL);folderSearchBar.setBackground(rounded(0xff272730,12));
+  folderSearch.setBackgroundColor(android.graphics.Color.TRANSPARENT);folderSearch.setPadding(dp(12),0,dp(4),0);
+  folderSearchBar.addView(folderSearch,new LinearLayout.LayoutParams(0,-1,1));
+  TextView voiceFolder=voiceSearchButton();folderSearchBar.addView(voiceFolder,new LinearLayout.LayoutParams(dp(46),-1));
+  voiceFolder.setOnClickListener(v->startVoiceSearch(VOICE_SEARCH_FOLDER));
+  voiceFolderSearch=folderSearch;drawer.setOnDismissListener(d->{if(voiceFolderSearch==folderSearch)voiceFolderSearch=null;});
+  panel.addView(folderSearchBar,fs);
   ScrollView scroll=new ScrollView(this);panel.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
   LinearLayout list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);scroll.addView(list);
   TextView wait=navText("Carregando pastas pela primeira vez...",13);list.addView(wait);
