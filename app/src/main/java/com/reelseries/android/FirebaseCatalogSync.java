@@ -70,7 +70,7 @@ public final class FirebaseCatalogSync {
  public static int upload(Context ctx,LocalCatalog db,String origin,String token,LocalCatalog.Progress progress)throws Exception{
   SQLiteDatabase sql=db.getReadableDatabase();int sent=0;String last="";
   while(true){
-   String query="SELECT id,nome,categoria,capa,url,sinopse,grupo,origem,series_id,episode_id,parent_series_id,season_number,episode_number FROM media WHERE id>?"+(origin==null?"":" AND origem=?")+" ORDER BY id LIMIT 200";
+   String query="SELECT id,nome,categoria,capa,url,sinopse,grupo,origem,series_id,episode_id,parent_series_id,season_number,episode_number FROM media WHERE id>?"+(origin==null?"":" AND origem=?")+" ORDER BY id LIMIT 500";
    String[] args=origin==null?new String[]{last}:new String[]{last,origin};
    java.util.LinkedHashMap<String,JSONObject> batches=new java.util.LinkedHashMap<>();int scanned=0;
    try(Cursor c=sql.rawQuery(query,args)){
@@ -85,7 +85,7 @@ public final class FirebaseCatalogSync {
    for(java.util.Map.Entry<String,JSONObject> batch:batches.entrySet())
     request(catalogEndpoint(ctx,batch.getKey(),null,token),"PATCH",batch.getValue().toString());
    sent+=scanned;progress.update(sent);
-   if(scanned<200)break;
+   if(scanned<500)break;
   }
   return sent;
  }
@@ -145,14 +145,14 @@ public final class FirebaseCatalogSync {
   for(String child:children)deleteNode(ctx,path+"/"+child,token,progress,removed,depth+1);
   request(address,"DELETE",null);
  }
- /** A batch contains up to 200 direct children, represented by null in one PATCH. */
- private static final int DELETE_BATCH=200;
+ /** A batch contains up to 500 direct children, represented by null in one PATCH. */
+ private static final int DELETE_BATCH=500;
  public interface DeleteProgress {void update(int done,int total,String folder);}
  private static void deleteChildren(Context ctx,String path,String token,ArrayList<String> keys,DeleteProgress progress,int[] done,int total)throws Exception{
   String url=base(ctx)+"/"+encodedPath(path)+".json?auth="+URLEncoder.encode(token,"UTF-8");
   for(int start=0;start<keys.size();){
    int end=Math.min(start+DELETE_BATCH,keys.size());
-   // Build a PATCH that removes 200 child records in one HTTP request.
+   // Build a PATCH that removes 500 child records in one HTTP request.
    JSONObject patch=new JSONObject();
    for(int j=start;j<end;j++)patch.put(keys.get(j),JSONObject.NULL);
    try{
@@ -254,7 +254,7 @@ public final class FirebaseCatalogSync {
   return "";
  }
  private static int downloadFolder(Context ctx,LocalCatalog db,String folder,int count,LocalCatalog.Progress progress)throws Exception{
-  String baseUrl=base(ctx)+"/"+folder+"/items.json?orderBy=%22%24key%22&limitToFirst=301";
+  String baseUrl=base(ctx)+"/"+folder+"/items.json?orderBy=%22%24key%22&limitToFirst=501";
   String last=null;
   for(int pages=0;pages<5000;pages++){
    String u=baseUrl+(last==null?"":"&startAt="+URLEncoder.encode(JSONObject.quote(last),"UTF-8"));
@@ -274,7 +274,7 @@ public final class FirebaseCatalogSync {
     sql.setTransactionSuccessful();
    }finally{sql.endTransaction();}
    String next=keys.get(keys.size()-1);if(next.equals(last))break;last=next;progress.update(count);
-   if(keys.size()<301)break;
+   if(keys.size()<501)break;
   }
   return count;
  }

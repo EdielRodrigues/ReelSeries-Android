@@ -54,7 +54,7 @@ public class AdminActivity extends Activity {
    if(isFinishing())return;
    if(deleteCounter!=null)deleteCounter.setText(done+" / "+total+" itens excluídos"+(total>0?" • "+(done*100/total)+"%":""));
    if(deleteBar!=null){deleteBar.setIndeterminate(total==0);if(total>0)deleteBar.setProgress((int)((long)done*1000/total));}
-   if(status!=null)status.setText("Excluindo: "+folder+" • lotes de até 200 registros");
+   if(status!=null)status.setText("Excluindo: "+folder+" • lotes de até 500 registros");
   });
  }
  private void login(){authorized=false;screen("Acesso protegido");if(auth.getCurrentUser()!=null){verify();return;}EditText email=field("E-mail"),pass=field("Senha");pass.setInputType(129);button("Entrar",()->{msg("Autenticando...");auth.signInWithEmailAndPassword(email.getText().toString().trim(),pass.getText().toString()).addOnSuccessListener(x->verify()).addOnFailureListener(e->msg(e.getMessage()));});}
@@ -656,7 +656,7 @@ public class AdminActivity extends Activity {
   worker.execute(()->{
    java.util.ArrayList<org.json.JSONObject> results=new java.util.ArrayList<>();int total=0,series=0,episodes=0,movies=0,live=0;
    String pattern="%"+filter+"%";
-   try(android.database.Cursor c=catalog.getReadableDatabase().rawQuery("SELECT nome,categoria,url,id FROM media WHERE origem=? AND nome LIKE ? ORDER BY nome COLLATE NOCASE LIMIT 100 OFFSET ?",new String[]{origin,pattern,String.valueOf(offset)})){
+   try(android.database.Cursor c=catalog.getReadableDatabase().rawQuery("SELECT nome,categoria,url,id FROM media WHERE origem=? AND nome LIKE ? ORDER BY nome COLLATE NOCASE LIMIT 500 OFFSET ?",new String[]{origin,pattern,String.valueOf(offset)})){
     while(c.moveToNext()){org.json.JSONObject o=new org.json.JSONObject();o.put("nome",c.getString(0));o.put("categoria",c.getString(1));o.put("url",c.getString(2));o.put("id",c.getString(3));results.add(o);}
    }catch(Exception e){msg("Falha ao consultar catálogo: "+e.getMessage());}
    try(android.database.Cursor c=catalog.getReadableDatabase().rawQuery("SELECT COUNT(*) FROM media WHERE origem=? AND nome LIKE ?",new String[]{origin,pattern})){if(c.moveToFirst())total=c.getInt(0);}
@@ -670,8 +670,8 @@ public class AdminActivity extends Activity {
      String kind=url.contains("/series/")?"EPISÓDIO":url.contains("/movie/")?"FILME":url.contains("/live/")?"TV AO VIVO":"SÉRIE";
      button(kind+" • "+name,()->new AlertDialog.Builder(this).setTitle(name).setMessage("Tipo: "+kind+"\nCategoria: "+cat+"\nID local: "+o.optString("id")+"\n"+(url.isEmpty()?"Sem vídeo vinculado":"Vídeo vinculado ao registro")).setPositiveButton("OK",null).show());
     }
-    if(offset>0)button("← Página anterior",()->xtreamSentCatalog(Math.max(0,offset-100),filter));
-    if(offset+results.size()<count)button("Próximos 100 →",()->xtreamSentCatalog(offset+100,filter));
+    if(offset>0)button("← Página anterior",()->xtreamSentCatalog(Math.max(0,offset-500),filter));
+    if(offset+results.size()<count)button("Próximos 500 →",()->xtreamSentCatalog(offset+500,filter));
     button("← Voltar às conexões",this::xtreamPanel);
    });
   });
@@ -689,38 +689,63 @@ public class AdminActivity extends Activity {
   String st=account.optString("status","");if(!st.isEmpty()&&!"Active".equalsIgnoreCase(st))throw new IOException("Conta não ativa: "+st);
   return api;
  }
- private void xtreamStart(String type){
-  if(!authorized||busy){msg("Aguarde a operação atual.");return;}
-  String base=xtreamPref("host"),user=xtreamPref("user"),pass;
-  try{pass=XtreamCredentials.load(this);}catch(Exception e){msg("Não foi possível recuperar a senha salva. Salve a conexão novamente.");return;}
-  if(base.isEmpty()||user.isEmpty()||pass.isEmpty()){msg("Primeiro salve e teste uma conexão.");return;}
-  busy=true;msg("Conectando e iniciando importação de "+type+"...");
-  worker.execute(()->{
-   try{
-    String api=xtreamAuthenticate(base,user,pass);
-    String origin="xtream_"+LocalCatalog.hash(base+"|"+user);
-    java.util.ArrayList<String> errors=new java.util.ArrayList<>();int total=0;
-    String[] types=type.equals("all")?new String[]{"live","movie","series"}:new String[]{type};
-    for(String current:types){
-     String action=current.equals("live")?"get_live_streams":current.equals("movie")?"get_vod_streams":"get_series";
-     String catAction=current.equals("live")?"get_live_categories":current.equals("movie")?"get_vod_categories":"get_series_categories";
-     try{
-      msg("Buscando "+current+" na API...");
-      total+=xtreamImport(api+"&action="+action,base,user,pass,current,xtreamCategoriesOptional(api+"&action="+catAction),origin);
-     }catch(Exception ex){errors.add(current+": "+xtreamSafeError(ex));}
-    }
-    final int count=total;
-    if(count>0){msg("Importados "+count+" registros. Enviando ao Firebase...");
-     final java.util.concurrent.CountDownLatch latch=new java.util.concurrent.CountDownLatch(1);
-     FirebaseCatalogSync.withToken(auth,token->new Thread(()->{try{int n=FirebaseCatalogSync.upload(this,catalog,origin,token,c->msg("Firebase: "+c+" enviados"));FirebaseCatalogSync.markChanged(this,token);getSharedPreferences("xtream_admin",MODE_PRIVATE).edit().putLong("last_upload_success",System.currentTimeMillis()).apply();msg("Firebase sincronizado: "+n+" registros.");}catch(Exception e){msg("Falha Firebase: "+e.getMessage());}finally{latch.countDown();}},"xtream-upload").start(),e->{msg("Falha Firebase: "+e);latch.countDown();});
-     latch.await();
-    }
-    if(errors.isEmpty())msg("Importação concluída: "+count+" registros processados. Confira o resultado da sincronização no Firebase.");
-    else msg("Importação parcial ("+count+"): "+android.text.TextUtils.join("; ",errors));
-    getSharedPreferences("xtream_admin",MODE_PRIVATE).edit().putLong("last_sync",System.currentTimeMillis()).apply();
-   }catch(Exception e){msg("Falha Xtream: "+xtreamSafeError(e));}finally{busy=false;}
-  });
- }
+  private void xtreamStart(String type){
+   if(!authorized||busy){msg("Aguarde a operação atual.");return;}
+   String base=xtreamPref("host"),user=xtreamPref("user"),pass;
+   try{pass=XtreamCredentials.load(this);}catch(Exception e){msg("Não foi possível recuperar a senha salva. Salve a conexão novamente.");return;}
+   if(base.isEmpty()||user.isEmpty()||pass.isEmpty()){msg("Primeiro salve e teste uma conexão.");return;}
+   busy=true;msg("Conectando e iniciando importação de "+type+"...");
+   worker.execute(()->{
+    try{
+     String api=xtreamAuthenticate(base,user,pass);
+     String origin="xtream_"+LocalCatalog.hash(base+"|"+user);
+     java.util.ArrayList<String> errors=new java.util.ArrayList<>();int total=0;
+     String[] types=type.equals("all")?new String[]{"live","movie","series"}:new String[]{type};
+     for(String current:types){
+      String action=current.equals("live")?"get_live_streams":current.equals("movie")?"get_vod_streams":"get_series";
+      String catAction=current.equals("live")?"get_live_categories":current.equals("movie")?"get_vod_categories":"get_series_categories";
+      try{
+       msg("Buscando "+current+" na API...");
+       // A listagem é lida integralmente em streaming; episódios mantêm as consultas individuais e retentativas.
+       total+=xtreamImport(api+"&action="+action,base,user,pass,current,xtreamCategoriesOptional(api+"&action="+catAction),origin);
+      }catch(Exception ex){errors.add(current+": "+xtreamSafeError(ex));}
+     }
+     final int count=total;
+     // Os botões individuais continuam enviando automaticamente; TUDO envia antes de consultar EPG.
+     if(count>0){
+      msg("Importados "+count+" registros. Enviando automaticamente ao Firebase (lotes de 500)...");
+      final java.util.concurrent.CountDownLatch latch=new java.util.concurrent.CountDownLatch(1);
+      final boolean[] uploaded={false};
+      FirebaseCatalogSync.withToken(auth,token->new Thread(()->{
+       try{
+        int n=FirebaseCatalogSync.upload(this,catalog,origin,token,c->msg("Firebase: "+c+" enviados"));
+        FirebaseCatalogSync.markChanged(this,token);
+        getSharedPreferences("xtream_admin",MODE_PRIVATE).edit().putLong("last_upload_success",System.currentTimeMillis()).apply();
+        uploaded[0]=true;msg("Firebase sincronizado: "+n+" registros.");
+       }catch(Exception e){msg("Falha Firebase: "+e.getMessage());}
+       finally{latch.countDown();}
+      },"xtream-upload").start(),e->{msg("Falha Firebase: "+e);latch.countDown();});
+      latch.await();
+      if(!uploaded[0])errors.add("envio ao Firebase não concluído");
+     }
+     if(type.equals("all")){
+      msg("Catálogo processado. Atualizando também a programação TV (EPG)...");
+      final java.util.concurrent.CountDownLatch epgLatch=new java.util.concurrent.CountDownLatch(1);
+      FirebaseCatalogSync.withToken(auth,token->new Thread(()->{
+       try{
+        int n=EpgGuide.publish(this,catalog,base,user,pass,token,c->msg("EPG: "+c+" canais consultados"));
+        msg("EPG sincronizado: "+n+" canais com programação.");
+       }catch(Exception e){synchronized(errors){errors.add("EPG: "+xtreamSafeError(e));}msg("Falha EPG: "+xtreamSafeError(e));}
+       finally{epgLatch.countDown();}
+      },"xtream-all-epg").start(),e->{synchronized(errors){errors.add("EPG Firebase: "+e);}epgLatch.countDown();});
+      epgLatch.await();
+     }
+     if(errors.isEmpty())msg("Sincronização concluída: "+count+" registros processados"+(type.equals("all")?" + EPG":"")+".");
+     else msg("Sincronização parcial ("+count+"): "+android.text.TextUtils.join("; ",errors));
+     getSharedPreferences("xtream_admin",MODE_PRIVATE).edit().putLong("last_sync",System.currentTimeMillis()).apply();
+    }catch(Exception e){msg("Falha Xtream: "+xtreamSafeError(e));}finally{busy=false;}
+   });
+  }
  private void xtreamSyncEpg(){
   if(!authorized||busy){msg("Aguarde a operação atual.");return;}
   String base=xtreamPref("host"),user=xtreamPref("user"),pass;
@@ -964,7 +989,7 @@ public class AdminActivity extends Activity {
    msg("Atualização concluída: "+n+" registros. Abra novamente o catálogo para visualizar.");
   }catch(Exception e){msg("Falha ao atualizar: "+e.getMessage());}finally{busy=false;}});
  }
- private static final int FIREBASE_PAGE_SIZE=60;
+ private static final int FIREBASE_PAGE_SIZE=500;
  private int folderNavigationId=0;
  private void browseFirebaseFolders(String path){browseFirebaseFolders(path,0);}
  private void browseFirebaseFolders(String path,int offset){
