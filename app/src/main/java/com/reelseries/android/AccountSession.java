@@ -58,30 +58,42 @@ public final class AccountSession {
   }).addOnSuccessListener(ok->{prefs(ctx).edit().putString("uid",uid).putLong("heartbeat",System.currentTimeMillis()).apply();cb.done(true,"");})
    .addOnFailureListener(e->cb.done(false,e.getMessage()==null?"Não foi possível autorizar este aparelho.":e.getMessage()));
  }
- public static void release(Context ctx,Runnable finished){
+ /** Finaliza a sessão somente depois de confirmar sua remoção no servidor. */
+ public interface ReleaseCallback {void done(boolean success,String message);}
+ public static void releaseConfirmed(Context ctx,ReleaseCallback cb){
   FirebaseUser user=FirebaseAuth.getInstance().getCurrentUser();
-  prefs(ctx).edit().remove("heartbeat").remove("uid").apply();
-  if(user==null){finished.run();return;}
-  String id=deviceId(ctx);
-  DocumentReference ref=FirebaseFirestore.getInstance().collection("usuarios").document(user.getUid());
-  java.util.concurrent.atomic.AtomicBoolean completed=new java.util.concurrent.atomic.AtomicBoolean(false);
-  Runnable finishOnce=()->{if(completed.compareAndSet(false,true))finished.run();};
-  new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(finishOnce,5000);
+  if(user==null){cb.done(true,"");return;}
+  String uid=user.getUid(),id=deviceId(ctx);
+  DocumentReference ref=FirebaseFirestore.getInstance().collection("usuarios").document(uid);
   FirebaseFirestore.getInstance().runTransaction(tx->{
-   com.google.firebase.firestore.DocumentSnapshot d=tx.get(ref);
-   Map<String,Object> map=new HashMap<>();Object raw=d.get("sessoesAtivas");
-   if(raw instanceof Map)for(Map.Entry<?,?> e:((Map<?,?>)raw).entrySet())if(e.getKey() instanceof String)map.put((String)e.getKey(),e.getValue());
-   map.remove(id);
-   long now=System.currentTimeMillis();
-   map.entrySet().removeIf(e->!(e.getValue() instanceof Number)||now-((Number)e.getValue()).longValue()>LEASE_MS);
-   Long limit=d.getLong("maxAcessos");int max=limit==null?1:Math.max(1,limit.intValue());
-   if(map.size()>max){
-    java.util.ArrayList<Map.Entry<String,Object>> ordered=new java.util.ArrayList<>(map.entrySet());
-    java.util.Collections.sort(ordered,(a,b)->Long.compare(((Number)a.getValue()).longValue(),((Number)b.getValue()).longValue()));
-    map.clear();for(int i=0;i<max;i++)map.put(ordered.get(i).getKey(),ordered.get(i).getValue());
+   com.google.firebase.firestore.DocumentSnapshot doc=tx.get(ref);
+   if(!doc.exists())return null;
+   Map<String,Object> sessions=new HashMap<>();
+   Object raw=doc.get("sessoesAtivas");
+   if(raw instanceof Map)for(Map.Entry<?,?> entry:((Map<?,?>)raw).entrySet()){
+    if(entry.getKey() instanceof String)sessions.put((String)entry.getKey(),entry.getValue());
    }
-   tx.update(ref,"sessoesAtivas",map);return null;
-  }).addOnCompleteListener(t->finishOnce.run());
+   sessions.remove(id);
+   long now=System.currentTimeMillis();
+   sessions.entrySet().removeIf(e->!(e.getValue() instanceof Number)
+     || now-((Number)e.getValue()).longValue()>LEASE_MS);
+   Long n=doc.getLong("maxAcessos");int limit=n==null?1:Math.max(1,n.intValue());
+   if(sessions.size()>limit){
+    java.util.ArrayList<Map.Entry<String,Object>> ordered=new java.util.ArrayList<>(sessions.entrySet());
+    java.util.Collections.sort(ordered,(a,b)->Long.compare(((Number)a.getValue()).longValue(),((Number)b.getValue()).longValue()));
+    sessions.clear();for(int i=0;i<limit;i++)sessions.put(ordered.get(i).getKey(),ordered.get(i).getValue());
+   }
+   tx.update(ref,"sessoesAtivas",sessions);
+   return null;
+  }).addOnSuccessListener(v->{
+   prefs(ctx).edit().remove("heartbeat").remove("uid").apply();
+   cb.done(true,"");
+  }).addOnFailureListener(e->cb.done(false,"Não foi possível liberar o acesso no Firebase: "+e.getMessage()));
+ }
+ /** Compatibilidade com chamadas antigas. Não desconecta se a liberação falhar. */
+ public static void release(Context ctx,Runnable finished){
+  releaseConfirmed(ctx,(ok,message)->{if(ok)finished.run();
+   else android.widget.Toast.makeText(ctx,message,android.widget.Toast.LENGTH_LONG).show();});
  }
  public static boolean isListed(Context ctx,com.google.firebase.firestore.DocumentSnapshot doc){
   Object raw=doc.get("sessoesAtivas");

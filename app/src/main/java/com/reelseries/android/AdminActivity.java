@@ -272,6 +272,7 @@ public class AdminActivity extends Activity {
    Long allowed=doc.getLong("maxAcessos");
    int max=allowed==null?1:Math.max(1,allowed.intValue());
    button("▣  Gerenciar acessos • "+max+" autorizado(s)",()->manageCustomerSessions(uid,max));
+   button("↺  LIMPAR SESSÕES DESTE CLIENTE",()->resetCustomerSessions(uid));
    detailHeading("Gerenciar acesso");
    if(!email.equals("Sem e-mail")){
     String mail=email;
@@ -298,6 +299,21 @@ public class AdminActivity extends Activity {
      .addOnSuccessListener(v->msg("Solicitação de "+label+" enviada ao cliente."))
      .addOnFailureListener(e->msg("Não foi possível enviar: "+e.getMessage()));
    }).show();
+ }
+ private void resetCustomerSessions(String uid){
+  protectedCustomer(uid,()->new AlertDialog.Builder(this)
+   .setTitle("Limpar aparelhos conectados?")
+   .setMessage("Remove todas as sessões registradas deste cliente no Firestore. O cliente poderá entrar novamente em outro aparelho, respeitando o limite de acessos. Não altera a senha, assinatura ou bloqueio.")
+   .setNegativeButton("Cancelar",null)
+   .setPositiveButton("Limpar sessões",(d,w)->{
+    java.util.Map<String,Object> changes=new java.util.HashMap<>();
+    changes.put("sessoesAtivas",new java.util.HashMap<String,Object>());
+    changes.put("alteradoPor",auth.getCurrentUser().getUid());
+    changes.put("alteradoEm",com.google.firebase.firestore.FieldValue.serverTimestamp());
+    firestore.collection("usuarios").document(uid).update(changes)
+     .addOnSuccessListener(v->{msg("Sessões do cliente liberadas.");userDetail(uid,"",false);})
+     .addOnFailureListener(e->msg("Não foi possível limpar sessões: "+e.getMessage()));
+   }).show());
  }
  private void manageCustomerSessions(String uid,int current){
   String[] choices={"1 acesso","2 acessos","3 acessos","4 acessos","5 acessos","6 acessos","8 acessos","10 acessos"};
