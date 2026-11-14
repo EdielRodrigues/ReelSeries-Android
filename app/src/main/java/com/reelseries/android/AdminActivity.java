@@ -224,16 +224,47 @@ public class AdminActivity extends Activity {
   TextView t=detailText(title,19,Color.WHITE,true);t.setPadding(0,dp(23),0,dp(8));root.addView(t);
  }
  private void detailInfo(String name,String email,String uid,boolean blocked,com.google.firebase.Timestamp expiry,boolean vip){
-  LinearLayout card=new LinearLayout(this);card.setOrientation(1);card.setPadding(dp(17),dp(18),dp(17),dp(18));card.setBackground(shape(0xff1c293e,18));
+  LinearLayout card=new LinearLayout(this);card.setOrientation(1);card.setPadding(dp(15),dp(16),dp(15),dp(16));card.setBackground(shape(0xff1c293e,18));
   LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.topMargin=dp(8);root.addView(card,cp);
-  TextView initials=detailText("●  "+name,22,Color.WHITE,true);card.addView(initials);
-  TextView mail=detailText(email,13,0xffb9c6d8,false);mail.setPadding(0,dp(5),0,dp(8));card.addView(mail);
+  LinearLayout columns=new LinearLayout(this);columns.setOrientation(LinearLayout.HORIZONTAL);columns.setGravity(Gravity.CENTER_VERTICAL);card.addView(columns,new LinearLayout.LayoutParams(-1,-2));
+  LinearLayout identity=new LinearLayout(this);identity.setOrientation(1);identity.setGravity(Gravity.CENTER);identity.setPadding(dp(7),dp(12),dp(7),dp(12));identity.setBackground(shape(0xff25364d,13));
+  LinearLayout.LayoutParams left=new LinearLayout.LayoutParams(0,dp(148),1.28f);left.rightMargin=dp(7);columns.addView(identity,left);
+  TextView title=detailText("●  "+name,15,Color.WHITE,true);title.setGravity(Gravity.CENTER);identity.addView(title,new LinearLayout.LayoutParams(-1,-2));
+  TextView mail=detailText(email,9,0xffc5d1df,false);mail.setGravity(Gravity.CENTER);mail.setPadding(0,dp(8),0,dp(8));mail.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE);identity.addView(mail,new LinearLayout.LayoutParams(-1,-2));
+  String dateText=expiry==null?"Não definido":new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(expiry.toDate());
+  TextView date=detailText("Vencimento: "+dateText,11,Color.WHITE,true);date.setGravity(Gravity.CENTER);identity.addView(date,new LinearLayout.LayoutParams(-1,-2));
+  LinearLayout presence=new LinearLayout(this);presence.setOrientation(1);presence.setGravity(Gravity.CENTER);presence.setPadding(dp(7),dp(12),dp(7),dp(12));presence.setBackground(shape(0xff293b53,13));columns.addView(presence,new LinearLayout.LayoutParams(0,dp(148),0.72f));
+  TextView online=detailText("● Verificando...",11,0xffc9d3e0,true);online.setGravity(Gravity.CENTER);presence.addView(online,new LinearLayout.LayoutParams(-1,-2));
+  TextView last=detailText("Visto por último\nAguardando dados",10,0xffc5d1df,false);last.setGravity(Gravity.CENTER);last.setPadding(0,dp(8),0,0);presence.addView(last,new LinearLayout.LayoutParams(-1,-2));
+  bindPresence(uid,online,last);
   String state=blocked?"BLOQUEADO":expiry==null||!vip||expiry.toDate().getTime()<=System.currentTimeMillis()?"SEM ASSINATURA VÁLIDA":"ATIVO";
-  TextView stateText=detailText("●  "+state,14,blocked?0xffff6c81:state.equals("ATIVO")?0xff6ce4ac:0xffffbf69,true);
-  card.addView(stateText);
-  TextView date=detailText("Vencimento: "+(expiry==null?"Não definido":new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(expiry.toDate())),16,Color.WHITE,true);
-  date.setPadding(0,dp(14),0,dp(7));card.addView(date);
-  TextView id=detailText("ID: "+uid,12,0xffaebdd1,false);id.setTextIsSelectable(true);card.addView(id);
+  LinearLayout footer=new LinearLayout(this);footer.setOrientation(LinearLayout.HORIZONTAL);footer.setGravity(Gravity.CENTER_VERTICAL);footer.setPadding(dp(3),dp(12),0,0);card.addView(footer,new LinearLayout.LayoutParams(-1,-2));
+  TextView stateText=detailText("●  "+state,12,blocked?0xffff6c81:state.equals("ATIVO")?0xff6ce4ac:0xffffbf69,true);
+  footer.addView(stateText,new LinearLayout.LayoutParams(-2,-2));
+  TextView id=detailText("ID: "+uid,10,0xffaebdd1,false);id.setGravity(Gravity.END|Gravity.CENTER_VERTICAL);id.setTextIsSelectable(true);id.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE);
+  LinearLayout.LayoutParams idParams=new LinearLayout.LayoutParams(0,-2,1);idParams.leftMargin=dp(8);footer.addView(id,idParams);
+ }
+ private void bindPresence(String uid,TextView online,TextView last){
+  com.google.firebase.firestore.DocumentReference ref=firestore.collection("usuarios").document(uid);
+  final long[] seen={0L};final boolean[] foreground={false};
+  Runnable refresh=()->{
+   if(!online.isAttachedToWindow())return;
+   boolean active=foreground[0]&&seen[0]>0&&System.currentTimeMillis()-seen[0]<150000L;
+   online.setText(active?"● Usuário online":"● Usuário offline");online.setTextColor(active?0xff6ce4ac:0xffaebdd1);
+   if(seen[0]>0){String when=new java.text.SimpleDateFormat("dd/MM/yyyy 'às' HH:mm",java.util.Locale.forLanguageTag("pt-BR")).format(new java.util.Date(seen[0]));last.setText("Visto por último\n"+when);}
+   else last.setText("Visto por último\nNão registrado");
+  };
+  ref.addSnapshotListener(this,(doc,error)->{
+   if(error!=null||doc==null||!doc.exists())return;
+   com.google.firebase.Timestamp stamp=doc.getTimestamp("ultimaAtividade");
+   seen[0]=stamp==null?0:stamp.toDate().getTime();foreground[0]=Boolean.TRUE.equals(doc.getBoolean("appEmUso"));refresh.run();
+  });
+  android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper());
+  Runnable timer=new Runnable(){public void run(){if(!online.isAttachedToWindow())return;refresh.run();handler.postDelayed(this,30000);}};
+  online.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
+   public void onViewAttachedToWindow(View v){refresh.run();handler.postDelayed(timer,30000);}
+   public void onViewDetachedFromWindow(View v){handler.removeCallbacks(timer);}
+  });
  }
  private void actionGrid(String[] labels,Runnable[] actions){
   for(int i=0;i<labels.length;i+=2){
