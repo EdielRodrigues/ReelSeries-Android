@@ -29,7 +29,7 @@ public class AdminActivity extends Activity {
   neonCustomerDetail="Gerenciar cliente".equals(title);
   ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(neonCustomerDetail?0xff0d0920:0xff0b101b);
   root=new LinearLayout(this);root.setPadding(dp(18),dp(22),dp(18),dp(36));root.setOrientation(1);scroll.addView(root);setContentView(scroll);
-  TextView brand=new TextView(this);brand.setText(neonCustomerDetail?"▶  REEL SÉRIES  /  ADMIN":"▣  REEL SÉRIES  /  ADMIN");brand.setTextColor(neonCustomerDetail?0xffd35cff:0xfffb536c);brand.setTextSize(14);brand.setTypeface(null,1);root.addView(brand);
+  TextView brand=new TextView(this);brand.setText("▣  REEL SÉRIES  /  ADMIN");brand.setTextColor(neonCustomerDetail?0xffd35cff:0xfffb536c);brand.setTextSize(14);brand.setTypeface(null,1);root.addView(brand);
   TextView h=new TextView(this);h.setText(title);h.setTextSize(27);h.setTypeface(null,1);h.setTextColor(Color.WHITE);h.setPadding(0,dp(8),0,dp(14));root.addView(h);
   status=new TextView(this);status.setTextColor(0xffc9d3e3);status.setTextSize(14);status.setPadding(dp(14),dp(13),dp(14),dp(13));status.setBackground(shape(0xff192438,14));root.addView(status);
  }
@@ -184,8 +184,21 @@ public class AdminActivity extends Activity {
   card.setBackground(shape(0xff202d42,18));LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.topMargin=dp(10);parent.addView(card,cp);
   LinearLayout top=new LinearLayout(this);top.setOrientation(LinearLayout.HORIZONTAL);top.setGravity(Gravity.CENTER_VERTICAL);card.addView(top);
   String initials="";for(String part:name.trim().split("\\s+")){if(!part.isEmpty()){initials+=part.substring(0,1).toUpperCase(java.util.Locale.ROOT);if(initials.length()>=2)break;}}
-  TextView avatar=detailText(initials.isEmpty()?"U":initials,17,Color.WHITE,true);avatar.setGravity(Gravity.CENTER);
-  avatar.setBackground(shape(0xff34455f,40));top.addView(avatar,new LinearLayout.LayoutParams(dp(46),dp(46)));
+  // The avatar index is saved by ProfileActivity in usuarios/{uid}.
+  // Keep the original initials when this client has not selected an avatar yet.
+  Long savedAvatar=doc.getLong("avatarIndex");
+  if(savedAvatar!=null && savedAvatar>=0 && savedAvatar<CLIENT_AVATARS.length){
+   ImageView avatar=new ImageView(this);
+   avatar.setImageResource(CLIENT_AVATARS[savedAvatar.intValue()]);
+   avatar.setScaleType(ImageView.ScaleType.FIT_CENTER);
+   avatar.setBackground(shape(0xff34455f,40));
+   top.addView(avatar,new LinearLayout.LayoutParams(dp(46),dp(46)));
+  }else{
+   TextView avatar=detailText(initials.isEmpty()?"U":initials,17,Color.WHITE,true);
+   avatar.setGravity(Gravity.CENTER);
+   avatar.setBackground(shape(0xff34455f,40));
+   top.addView(avatar,new LinearLayout.LayoutParams(dp(46),dp(46)));
+  }
   LinearLayout identity=new LinearLayout(this);identity.setOrientation(LinearLayout.VERTICAL);
   LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(0,-2,1);ip.leftMargin=dp(11);top.addView(identity,ip);
   TextView n=detailText(name,17,Color.WHITE,true);n.setSingleLine(true);n.setEllipsize(android.text.TextUtils.TruncateAt.END);identity.addView(n);
@@ -226,35 +239,27 @@ public class AdminActivity extends Activity {
   if(bold)t.setTypeface(null,1);return t;
  }
  private void detailHeading(String title){
-  LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.topMargin=dp(24);rp.bottomMargin=dp(12);root.addView(row,rp);
-  View left=new View(this);left.setBackgroundColor(0xff9332c6);row.addView(left,new LinearLayout.LayoutParams(0,dp(1),1));
-  TextView heading=detailText("♛  "+title,20,Color.WHITE,true);heading.setGravity(Gravity.CENTER);heading.setPadding(dp(12),0,dp(12),0);row.addView(heading);
-  View right=new View(this);right.setBackgroundColor(0xff9332c6);row.addView(right,new LinearLayout.LayoutParams(0,dp(1),1));
+  TextView t=detailText(title,19,Color.WHITE,true);t.setTextColor(0xffe7d1ff);t.setPadding(0,dp(23),0,dp(8));root.addView(t);
  }
  private void detailInfo(String name,String email,String uid,boolean blocked,com.google.firebase.Timestamp expiry,boolean vip,int avatarIndex){
-  LinearLayout card=new LinearLayout(this);card.setOrientation(1);card.setPadding(dp(16),dp(16),dp(16),dp(16));card.setBackground(neonShape(0xff190f2c,0xffc34cf7,18));
+  LinearLayout card=new LinearLayout(this);card.setOrientation(1);card.setPadding(dp(16),dp(17),dp(16),dp(17));card.setBackground(neonShape(0xff1a102c,0xffb64bfa,18));
   LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.topMargin=dp(8);root.addView(card,cp);
-  LinearLayout top=new LinearLayout(this);top.setGravity(Gravity.CENTER_VERTICAL);card.addView(top,new LinearLayout.LayoutParams(-1,-2));
-  ImageView portrait=new ImageView(this);portrait.setImageResource(CLIENT_AVATARS[Math.max(0,Math.min(15,avatarIndex))]);portrait.setScaleType(ImageView.ScaleType.FIT_CENTER);portrait.setBackground(neonShape(0xff28183e,0xffb64bfa,50));portrait.setPadding(dp(3),dp(3),dp(3),dp(3));
-  LinearLayout.LayoutParams pic=new LinearLayout.LayoutParams(dp(76),dp(76));pic.rightMargin=dp(12);top.addView(portrait,pic);
+  LinearLayout top=new LinearLayout(this);top.setOrientation(LinearLayout.HORIZONTAL);top.setGravity(Gravity.CENTER_VERTICAL);card.addView(top);
+  ImageView portrait=new ImageView(this);portrait.setImageResource(CLIENT_AVATARS[Math.max(0,Math.min(15,avatarIndex))]);portrait.setScaleType(ImageView.ScaleType.FIT_CENTER);
+  portrait.setBackground(neonShape(0xff28183e,0xffb64bfa,50));portrait.setPadding(dp(3),dp(3),dp(3),dp(3));
+  LinearLayout.LayoutParams pic=new LinearLayout.LayoutParams(dp(72),dp(72));pic.rightMargin=dp(12);top.addView(portrait,pic);
   LinearLayout identity=new LinearLayout(this);identity.setOrientation(1);top.addView(identity,new LinearLayout.LayoutParams(0,-2,1));
-  TextView title=detailText(name,20,Color.WHITE,true);identity.addView(title);
-  TextView mail=detailText(email,11,0xffded2ed,false);mail.setPadding(0,dp(5),0,0);mail.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE);identity.addView(mail);
-  String state=blocked?"BLOQUEADO":expiry==null||!vip||expiry.toDate().getTime()<=System.currentTimeMillis()?"SEM ASSINATURA":"ATIVO";
-  TextView stateText=detailText("● "+state,12,blocked?0xffff6c81:state.equals("ATIVO")?0xff62ee9e:0xffffbf69,true);stateText.setGravity(Gravity.CENTER);stateText.setPadding(dp(8),dp(6),dp(8),dp(6));stateText.setBackground(neonShape(0xff153c29,0xff38d45b,12));
-  LinearLayout.LayoutParams slp=new LinearLayout.LayoutParams(-2,-2);slp.leftMargin=dp(6);top.addView(stateText,slp);
-  View divider=new View(this);divider.setBackgroundColor(0xff63327e);LinearLayout.LayoutParams div=new LinearLayout.LayoutParams(-1,dp(1));div.topMargin=dp(14);div.bottomMargin=dp(5);card.addView(divider,div);
-  TextView online=detailRow(card,"◉","Verificando...",0xff62ee9e);TextView last=detailRow(card,"◷","Último visto: aguardando dados",0xfff2e7ff);
+  TextView title=detailText(name,19,Color.WHITE,true);identity.addView(title);
+  TextView mail=detailText(email,11,0xffded2ed,false);mail.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE);mail.setPadding(0,dp(5),0,dp(5));identity.addView(mail);
+  String state=blocked?"BLOQUEADO":expiry==null||!vip||expiry.toDate().getTime()<=System.currentTimeMillis()?"SEM ASSINATURA VÁLIDA":"ATIVO";
+  TextView stateText=detailText("● "+state,12,blocked?0xffff6c81:state.equals("ATIVO")?0xff62ee9e:0xffffbf69,true);identity.addView(stateText);
+  View line=new View(this);line.setBackgroundColor(0xff58346f);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(1));lp.topMargin=dp(14);lp.bottomMargin=dp(8);card.addView(line,lp);
+  TextView online=detailText("● Verificando...",14,0xffaebdd1,true);card.addView(online);
+  TextView last=detailText("Último visto: aguardando dados",12,0xffd5c7e5,false);last.setPadding(0,dp(9),0,0);card.addView(last);
   bindPresence(uid,online,last);
   String dateText=expiry==null?"Não definido":new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(expiry.toDate());
-  detailRow(card,"▦","Vencimento: "+dateText,0xfff2e7ff);
-  TextView id=detailRow(card,"▣","ID: "+uid,0xffd2c2e3);id.setTextIsSelectable(true);id.setTextSize(11);
- }
- private TextView detailRow(LinearLayout card,String icon,String value,int color){
-  LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(5),dp(8),dp(5),dp(8));card.addView(row,new LinearLayout.LayoutParams(-1,-2));
-  TextView glyph=detailText(icon,21,0xffc26aff,true);glyph.setGravity(Gravity.CENTER);row.addView(glyph,new LinearLayout.LayoutParams(dp(34),-2));
-  TextView t=detailText(value,14,color,true);LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(0,-2,1);tp.leftMargin=dp(8);row.addView(t,tp);
-  View line=new View(this);line.setBackgroundColor(0xff483056);card.addView(line,new LinearLayout.LayoutParams(-1,dp(1)));return t;
+  TextView date=detailText("▦  Vencimento: "+dateText,13,0xffeadcf6,true);date.setPadding(0,dp(11),0,dp(9));card.addView(date);
+  TextView id=detailText("ID: "+uid,10,0xffb8a6c9,false);id.setTextIsSelectable(true);card.addView(id);
  }
  private void bindPresence(String uid,TextView online,TextView last){
   com.google.firebase.firestore.DocumentReference ref=firestore.collection("usuarios").document(uid);
@@ -262,7 +267,7 @@ public class AdminActivity extends Activity {
   Runnable refresh=()->{
    if(!online.isAttachedToWindow())return;
    boolean active=foreground[0]&&seen[0]>0&&System.currentTimeMillis()-seen[0]<150000L;
-   online.setText(active?"Usuário online":"Usuário offline");online.setTextColor(active?0xff6ce4ac:0xffaebdd1);
+   online.setText(active?"● Usuário online":"● Usuário offline");online.setTextColor(active?0xff6ce4ac:0xffaebdd1);
    if(seen[0]>0){String when=new java.text.SimpleDateFormat("dd/MM/yyyy 'às' HH:mm",java.util.Locale.forLanguageTag("pt-BR")).format(new java.util.Date(seen[0]));last.setText("Último visto: "+when);}
    else last.setText("Último visto: não registrado");
   };
@@ -279,15 +284,17 @@ public class AdminActivity extends Activity {
   });
  }
  private void actionGrid(String[] labels,Runnable[] actions){
-  int columns=neonCustomerDetail&&labels.length==5?3:2;
-  for(int i=0;i<labels.length;){
-   int count=(columns==3&&i>=3)?2:Math.min(columns,labels.length-i);
-   LinearLayout row=new LinearLayout(this);row.setOrientation(0);LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.topMargin=dp(9);root.addView(row,rp);
-   for(int j=0;j<count;j++){
-    int index=i+j;TextView tile=detailText(labels[index],14,Color.WHITE,true);tile.setGravity(Gravity.CENTER);tile.setPadding(dp(6),dp(12),dp(6),dp(12));
-    tile.setBackground(neonCustomerDetail?neonShape(index==4&&labels.length==5?0xff8e14d4:0xff291d3b,0xffbb4ef2,15):shape(0xff26364e,15));
-    LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(80),1);if(j>0)lp.leftMargin=dp(9);row.addView(tile,lp);tile.setOnClickListener(v->actions[index].run());
-   }i+=count;
+  for(int i=0;i<labels.length;i+=2){
+   LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);
+   LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.topMargin=dp(9);root.addView(row,rp);
+   for(int j=i;j<Math.min(i+2,labels.length);j++){
+    final Runnable run=actions[j];
+    TextView tile=detailText(labels[j],15,Color.WHITE,true);tile.setGravity(Gravity.CENTER);tile.setPadding(dp(9),dp(14),dp(9),dp(14));
+    tile.setMinHeight(dp(86));tile.setBackground(neonCustomerDetail?neonShape(0xff241836,0xffa848e6,15):shape(0xff26364e,15));
+    LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(90),1);if(j%2==1)lp.leftMargin=dp(10);
+    row.addView(tile,lp);tile.setOnClickListener(v->run.run());
+   }
+
   }
  }
  private void userDetail(String uid,String display,boolean ignored){
