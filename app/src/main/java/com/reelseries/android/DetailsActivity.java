@@ -7,9 +7,9 @@ public class DetailsActivity extends Activity {
  TextView back=text("‹  Voltar ao catálogo",17,0xffe5e7eb);root.addView(back);back.setOnClickListener(v->finish());
  // Capa em destaque: mostra a imagem inteira sem recortar as bordas.
  FrameLayout hero=new FrameLayout(this);hero.setBackgroundColor(0xff101015);
- LinearLayout.LayoutParams heroParams=new LinearLayout.LayoutParams(-1,dp(850));heroParams.bottomMargin=dp(12);root.addView(hero,heroParams);
+ LinearLayout.LayoutParams heroParams=new LinearLayout.LayoutParams(-1,dp(738));heroParams.bottomMargin=dp(12);root.addView(hero,heroParams);
  ImageView cover=new ImageView(this);cover.setScaleType(ImageView.ScaleType.FIT_CENTER);cover.setBackgroundColor(0xff101015);
- hero.addView(cover,new FrameLayout.LayoutParams(-1,dp(560),Gravity.TOP));
+ hero.addView(cover,new FrameLayout.LayoutParams(-1,dp(448),Gravity.TOP));
  // Degradê escuro atrás dos controles, sem esconder a capa inteira.
  View shade=new View(this);shade.setBackground(new android.graphics.drawable.GradientDrawable(
   android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
@@ -23,7 +23,8 @@ public class DetailsActivity extends Activity {
  String url=LocalCatalog.first(o,"url","video","link","stream","stream_url","video_url","play_url","source","src");Button play=new Button(this);play.setAllCaps(false);play.setText("▶  Assistir agora");play.setTextSize(18);play.setTextColor(0xffffffff);play.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xffe6384b));heroControls.addView(play,new LinearLayout.LayoutParams(-1,dp(58)));
  play.setEnabled(url.startsWith("http"));if(!url.startsWith("http"))play.setText(SeriesHelper.isSeries(o)?"Selecione um episódio abaixo":"Vídeo indisponível");play.setOnClickListener(v->{Intent i=new Intent(this,PlayerActivity.class);i.putExtra("url",url);i.putExtra("name",o.optString("nome"));i.putExtra("capa",LocalCatalog.first(o,"capa","tvg-logo","tvg_logo","logo","imagem","image","poster","backdrop"));i.putExtra("adult",AdultProtection.adult(o));attachPlaylist(i,url);AdultProtection.require(this,AdultProtection.adult(o),()->startActivity(i));});
  Button favorite=new Button(this);favorite.setAllCaps(false);String favKey=o.optString("nome");android.content.SharedPreferences prefs=UserMediaState.prefs(this,"reel_favorites");Runnable updateFav=()->favorite.setText(prefs.getBoolean(favKey,false)?"♥  Remover dos favoritos":"♡  Adicionar aos favoritos");updateFav.run();favorite.setOnClickListener(v->{prefs.edit().putBoolean(favKey,!prefs.getBoolean(favKey,false)).apply();updateFav.run();});favorite.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff33333b));favorite.setTextColor(0xffffffff);heroControls.addView(favorite);
- if(url.matches("(?is)^https?://[^/]+/live/.*")){
+ String channelCategory=o.optString("categoria","").toLowerCase(java.util.Locale.ROOT);
+ if(url.matches("(?is)^https?://[^/]+/live/.*") || channelCategory.contains("canal") || channelCategory.contains("iptv") || channelCategory.contains("tv ao vivo")){
   root.addView(sectionTitle("Programação do canal"));
   TextView guide=text("Carregando programação...",14,0xffcbd5e1);root.addView(guide);
   EpgGuide.load(this,o.optString("id",""),guide);
@@ -37,7 +38,7 @@ public class DetailsActivity extends Activity {
        // Altura proporcional à capa real: nenhum pedaço fica cortado.
        int width=hero.getWidth();
        if(width<=0)width=getResources().getDisplayMetrics().widthPixels-dp(32);
-       int imageHeight=Math.max(dp(240),Math.round((float)width*bmp.getHeight()/bmp.getWidth()));
+       int imageHeight=Math.max(dp(192),Math.round(0.80f*width*bmp.getHeight()/bmp.getWidth()));
        FrameLayout.LayoutParams coverParams=new FrameLayout.LayoutParams(-1,imageHeight,Gravity.TOP);
        cover.setLayoutParams(coverParams);
        // Reserva espaço exclusivo para título e botões abaixo da imagem completa.
