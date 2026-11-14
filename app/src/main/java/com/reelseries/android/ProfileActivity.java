@@ -15,7 +15,7 @@ public class ProfileActivity extends Activity {
   android.graphics.drawable.GradientDrawable border=roundBg(0xff252630,100);border.setStroke(dp(selected?3:1),selected?0xffff3d73:0xffa6a8b2);img.setBackground(border);
   return img;
  }
- private void chooseAvatar(int chosen){FirebaseUser u=auth.getCurrentUser();if(u==null)return;getSharedPreferences("reel_avatar",MODE_PRIVATE).edit().putInt("avatar_"+u.getUid(),chosen).apply();render();}
+ private void chooseAvatar(int chosen){FirebaseUser u=auth.getCurrentUser();if(u==null)return;getSharedPreferences("reel_avatar",MODE_PRIVATE).edit().putInt("avatar_"+u.getUid(),chosen).apply();db.collection("usuarios").document(u.getUid()).update("avatarIndex",chosen).addOnFailureListener(e->android.util.Log.w("ReelAvatar","Não foi possível sincronizar avatar",e));render();}
  private void showAvatarPicker(){
   final AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Escolha seu avatar").setNegativeButton("Cancelar",null).create();
   android.widget.HorizontalScrollView scroll=new android.widget.HorizontalScrollView(this);scroll.setFillViewport(true);
@@ -47,7 +47,7 @@ public class ProfileActivity extends Activity {
  @Override protected void onDestroy(){if(profileSessionListener!=null)profileSessionListener.remove();super.onDestroy();}
  @Override public void onCreate(Bundle b){super.onCreate(b);auth=FirebaseAuth.getInstance();db=FirebaseFirestore.getInstance();getWindow().setStatusBarColor(bg);ScrollView scroll=new ScrollView(this);root=new LinearLayout(this);root.setOrientation(1);root.setPadding(dp(22),dp(24),dp(22),dp(28));root.setBackgroundColor(bg);scroll.setBackgroundColor(bg);scroll.setFillViewport(true);scroll.addView(root);setContentView(scroll);render();ApkUpdateChecker.check(this);}
  @Override protected void onResume(){super.onResume();ApkUpdateChecker.check(this);}
- void registerProfile(FirebaseUser user){if(user==null)return;java.util.Map<String,Object> data=new java.util.HashMap<>();data.put("email",user.getEmail()==null?"":user.getEmail());data.put("uid",user.getUid());data.put("ultimoAcesso",com.google.firebase.firestore.FieldValue.serverTimestamp());db.collection("usuarios").document(user.getUid()).set(data,com.google.firebase.firestore.SetOptions.merge()).addOnFailureListener(e->android.util.Log.w("ReelPerfil","Falha ao registrar perfil",e));}
+ void registerProfile(FirebaseUser user){if(user==null)return;java.util.Map<String,Object> data=new java.util.HashMap<>();if(getSharedPreferences("reel_avatar",MODE_PRIVATE).contains("avatar_"+user.getUid()))data.put("avatarIndex",avatarIndex());data.put("email",user.getEmail()==null?"":user.getEmail());data.put("uid",user.getUid());data.put("ultimoAcesso",com.google.firebase.firestore.FieldValue.serverTimestamp());db.collection("usuarios").document(user.getUid()).set(data,com.google.firebase.firestore.SetOptions.merge()).addOnFailureListener(e->android.util.Log.w("ReelPerfil","Falha ao registrar perfil",e));}
  void showBlocked(){new AlertDialog.Builder(this).setTitle("Acesso bloqueado").setMessage("Este perfil foi bloqueado pela administração do Reel Séries.").setCancelable(false).setPositiveButton("Sair da conta",(d,w)->AccountSession.release(this,()->{auth.signOut();startActivity(new Intent(this,ProfileActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();})).show();}
 
  private EditText authInput(String hint,boolean password){

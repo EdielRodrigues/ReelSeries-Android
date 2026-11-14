@@ -20,20 +20,21 @@ public class AdminActivity extends Activity {
  private final FirebaseAuth auth=FirebaseAuth.getInstance();
  private final FirebaseFirestore firestore=FirebaseFirestore.getInstance();
  private final ExecutorService worker=Executors.newSingleThreadExecutor();
- private LinearLayout root;private TextView status;private ProgressBar deleteBar;private TextView deleteCounter;private boolean authorized=false,busy=false;
+ private boolean neonCustomerDetail=false;private LinearLayout root;private TextView status;private ProgressBar deleteBar;private TextView deleteCounter;private boolean authorized=false,busy=false;
  private LocalCatalog catalog;
  @Override public void onCreate(Bundle b){super.onCreate(b);catalog=new LocalCatalog(this);login();}
  private int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+0.5f);}
  private GradientDrawable shape(int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
  private void screen(String title){
-  ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xff0b101b);
+  neonCustomerDetail="Gerenciar cliente".equals(title);
+  ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(neonCustomerDetail?0xff0d0920:0xff0b101b);
   root=new LinearLayout(this);root.setPadding(dp(18),dp(22),dp(18),dp(36));root.setOrientation(1);scroll.addView(root);setContentView(scroll);
-  TextView brand=new TextView(this);brand.setText("▣  REEL SÉRIES  /  ADMIN");brand.setTextColor(0xfffb536c);brand.setTextSize(14);brand.setTypeface(null,1);root.addView(brand);
+  TextView brand=new TextView(this);brand.setText("▣  REEL SÉRIES  /  ADMIN");brand.setTextColor(neonCustomerDetail?0xffd35cff:0xfffb536c);brand.setTextSize(14);brand.setTypeface(null,1);root.addView(brand);
   TextView h=new TextView(this);h.setText(title);h.setTextSize(27);h.setTypeface(null,1);h.setTextColor(Color.WHITE);h.setPadding(0,dp(8),0,dp(14));root.addView(h);
   status=new TextView(this);status.setTextColor(0xffc9d3e3);status.setTextSize(14);status.setPadding(dp(14),dp(13),dp(14),dp(13));status.setBackground(shape(0xff192438,14));root.addView(status);
  }
  private EditText field(String hint){EditText e=new EditText(this);e.setHint(hint);e.setTextColor(-1);e.setHintTextColor(0xff99a5ba);e.setTextSize(15);e.setSingleLine(false);e.setPadding(dp(14),dp(12),dp(14),dp(12));e.setBackground(shape(0xff1b273a,12));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(10);root.addView(e,lp);return e;}
- private void button(String label,Runnable action){TextView b=new TextView(this);b.setText(label);b.setTextSize(15);b.setTypeface(null,1);b.setTextColor(Color.WHITE);b.setGravity(Gravity.CENTER_VERTICAL);b.setPadding(dp(17),dp(15),dp(12),dp(15));b.setMinHeight(dp(54));b.setBackground(shape(0xff202d42,13));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(9);root.addView(b,lp);b.setOnClickListener(v->action.run());}
+ private void button(String label,Runnable action){TextView b=new TextView(this);b.setText(label);b.setTextSize(15);b.setTypeface(null,1);b.setTextColor(Color.WHITE);b.setGravity(Gravity.CENTER_VERTICAL);b.setPadding(dp(17),dp(15),dp(12),dp(15));b.setMinHeight(dp(54));b.setBackground(neonCustomerDetail?neonShape(0xff211733,0xffa848e6,14):shape(0xff202d42,13));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(9);root.addView(b,lp);b.setOnClickListener(v->action.run());}
  private void section(String title){TextView t=new TextView(this);t.setText(title.toUpperCase(java.util.Locale.ROOT));t.setTextSize(13);t.setTypeface(null,1);t.setTextColor(0xffff627a);t.setPadding(0,dp(23),0,dp(5));root.addView(t);}
  private void msg(String s){runOnUiThread(()->{if(!isFinishing()&&status!=null){status.setVisibility(View.VISIBLE);status.setText(s);}});}
  private void showDeletionProgress(String title){
@@ -216,33 +217,36 @@ public class AdminActivity extends Activity {
    button("← Voltar ao ADM",this::dashboard);
   }).addOnFailureListener(e->msg("Erro ao listar ADM: "+e.getMessage()));
  }
+ private GradientDrawable neonShape(int fill,int stroke,int radius){
+  GradientDrawable d=shape(fill,radius);d.setStroke(dp(1),stroke);return d;
+ }
+ private static final int[] CLIENT_AVATARS={R.drawable.avatar_1,R.drawable.avatar_2,R.drawable.avatar_3,R.drawable.avatar_4,R.drawable.avatar_5,R.drawable.avatar_6,R.drawable.avatar_7,R.drawable.avatar_8,R.drawable.avatar_9,R.drawable.avatar_10,R.drawable.avatar_11,R.drawable.avatar_12,R.drawable.avatar_13,R.drawable.avatar_14,R.drawable.avatar_15,R.drawable.avatar_16};
  private TextView detailText(String text,int size,int color,boolean bold){
   TextView t=new TextView(this);t.setText(text);t.setTextSize(size);t.setTextColor(color);
   if(bold)t.setTypeface(null,1);return t;
  }
  private void detailHeading(String title){
-  TextView t=detailText(title,19,Color.WHITE,true);t.setPadding(0,dp(23),0,dp(8));root.addView(t);
+  TextView t=detailText(title,19,Color.WHITE,true);t.setTextColor(0xffe7d1ff);t.setPadding(0,dp(23),0,dp(8));root.addView(t);
  }
- private void detailInfo(String name,String email,String uid,boolean blocked,com.google.firebase.Timestamp expiry,boolean vip){
-  LinearLayout card=new LinearLayout(this);card.setOrientation(1);card.setPadding(dp(15),dp(16),dp(15),dp(16));card.setBackground(shape(0xff1c293e,18));
+ private void detailInfo(String name,String email,String uid,boolean blocked,com.google.firebase.Timestamp expiry,boolean vip,int avatarIndex){
+  LinearLayout card=new LinearLayout(this);card.setOrientation(1);card.setPadding(dp(16),dp(17),dp(16),dp(17));card.setBackground(neonShape(0xff1a102c,0xffb64bfa,18));
   LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.topMargin=dp(8);root.addView(card,cp);
-  LinearLayout columns=new LinearLayout(this);columns.setOrientation(LinearLayout.HORIZONTAL);columns.setGravity(Gravity.CENTER_VERTICAL);card.addView(columns,new LinearLayout.LayoutParams(-1,-2));
-  LinearLayout identity=new LinearLayout(this);identity.setOrientation(1);identity.setGravity(Gravity.CENTER);identity.setPadding(dp(7),dp(12),dp(7),dp(12));identity.setBackground(shape(0xff25364d,13));
-  LinearLayout.LayoutParams left=new LinearLayout.LayoutParams(0,dp(148),1.28f);left.rightMargin=dp(7);columns.addView(identity,left);
-  TextView title=detailText("●  "+name,15,Color.WHITE,true);title.setGravity(Gravity.CENTER);identity.addView(title,new LinearLayout.LayoutParams(-1,-2));
-  TextView mail=detailText(email,9,0xffc5d1df,false);mail.setGravity(Gravity.CENTER);mail.setPadding(0,dp(8),0,dp(8));mail.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE);identity.addView(mail,new LinearLayout.LayoutParams(-1,-2));
-  String dateText=expiry==null?"Não definido":new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(expiry.toDate());
-  TextView date=detailText("Vencimento: "+dateText,11,Color.WHITE,true);date.setGravity(Gravity.CENTER);identity.addView(date,new LinearLayout.LayoutParams(-1,-2));
-  LinearLayout presence=new LinearLayout(this);presence.setOrientation(1);presence.setGravity(Gravity.CENTER);presence.setPadding(dp(7),dp(12),dp(7),dp(12));presence.setBackground(shape(0xff293b53,13));columns.addView(presence,new LinearLayout.LayoutParams(0,dp(148),0.72f));
-  TextView online=detailText("● Verificando...",11,0xffc9d3e0,true);online.setGravity(Gravity.CENTER);presence.addView(online,new LinearLayout.LayoutParams(-1,-2));
-  TextView last=detailText("Visto por último\nAguardando dados",10,0xffc5d1df,false);last.setGravity(Gravity.CENTER);last.setPadding(0,dp(8),0,0);presence.addView(last,new LinearLayout.LayoutParams(-1,-2));
-  bindPresence(uid,online,last);
+  LinearLayout top=new LinearLayout(this);top.setOrientation(LinearLayout.HORIZONTAL);top.setGravity(Gravity.CENTER_VERTICAL);card.addView(top);
+  ImageView portrait=new ImageView(this);portrait.setImageResource(CLIENT_AVATARS[Math.max(0,Math.min(15,avatarIndex))]);portrait.setScaleType(ImageView.ScaleType.FIT_CENTER);
+  portrait.setBackground(neonShape(0xff28183e,0xffb64bfa,50));portrait.setPadding(dp(3),dp(3),dp(3),dp(3));
+  LinearLayout.LayoutParams pic=new LinearLayout.LayoutParams(dp(72),dp(72));pic.rightMargin=dp(12);top.addView(portrait,pic);
+  LinearLayout identity=new LinearLayout(this);identity.setOrientation(1);top.addView(identity,new LinearLayout.LayoutParams(0,-2,1));
+  TextView title=detailText(name,19,Color.WHITE,true);identity.addView(title);
+  TextView mail=detailText(email,11,0xffded2ed,false);mail.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE);mail.setPadding(0,dp(5),0,dp(5));identity.addView(mail);
   String state=blocked?"BLOQUEADO":expiry==null||!vip||expiry.toDate().getTime()<=System.currentTimeMillis()?"SEM ASSINATURA VÁLIDA":"ATIVO";
-  LinearLayout footer=new LinearLayout(this);footer.setOrientation(LinearLayout.HORIZONTAL);footer.setGravity(Gravity.CENTER_VERTICAL);footer.setPadding(dp(3),dp(12),0,0);card.addView(footer,new LinearLayout.LayoutParams(-1,-2));
-  TextView stateText=detailText("●  "+state,12,blocked?0xffff6c81:state.equals("ATIVO")?0xff6ce4ac:0xffffbf69,true);
-  footer.addView(stateText,new LinearLayout.LayoutParams(-2,-2));
-  TextView id=detailText("ID: "+uid,10,0xffaebdd1,false);id.setGravity(Gravity.END|Gravity.CENTER_VERTICAL);id.setTextIsSelectable(true);id.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE);
-  LinearLayout.LayoutParams idParams=new LinearLayout.LayoutParams(0,-2,1);idParams.leftMargin=dp(8);footer.addView(id,idParams);
+  TextView stateText=detailText("● "+state,12,blocked?0xffff6c81:state.equals("ATIVO")?0xff62ee9e:0xffffbf69,true);identity.addView(stateText);
+  View line=new View(this);line.setBackgroundColor(0xff58346f);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(1));lp.topMargin=dp(14);lp.bottomMargin=dp(8);card.addView(line,lp);
+  TextView online=detailText("● Verificando...",14,0xffaebdd1,true);card.addView(online);
+  TextView last=detailText("Último visto: aguardando dados",12,0xffd5c7e5,false);last.setPadding(0,dp(9),0,0);card.addView(last);
+  bindPresence(uid,online,last);
+  String dateText=expiry==null?"Não definido":new java.text.SimpleDateFormat("dd/MM/yyyy",java.util.Locale.forLanguageTag("pt-BR")).format(expiry.toDate());
+  TextView date=detailText("▦  Vencimento: "+dateText,13,0xffeadcf6,true);date.setPadding(0,dp(11),0,dp(9));card.addView(date);
+  TextView id=detailText("ID: "+uid,10,0xffb8a6c9,false);id.setTextIsSelectable(true);card.addView(id);
  }
  private void bindPresence(String uid,TextView online,TextView last){
   com.google.firebase.firestore.DocumentReference ref=firestore.collection("usuarios").document(uid);
@@ -251,8 +255,8 @@ public class AdminActivity extends Activity {
    if(!online.isAttachedToWindow())return;
    boolean active=foreground[0]&&seen[0]>0&&System.currentTimeMillis()-seen[0]<150000L;
    online.setText(active?"● Usuário online":"● Usuário offline");online.setTextColor(active?0xff6ce4ac:0xffaebdd1);
-   if(seen[0]>0){String when=new java.text.SimpleDateFormat("dd/MM/yyyy 'às' HH:mm",java.util.Locale.forLanguageTag("pt-BR")).format(new java.util.Date(seen[0]));last.setText("Visto por último\n"+when);}
-   else last.setText("Visto por último\nNão registrado");
+   if(seen[0]>0){String when=new java.text.SimpleDateFormat("dd/MM/yyyy 'às' HH:mm",java.util.Locale.forLanguageTag("pt-BR")).format(new java.util.Date(seen[0]));last.setText("Último visto: "+when);}
+   else last.setText("Último visto: não registrado");
   };
   ref.addSnapshotListener(this,(doc,error)->{
    if(error!=null||doc==null||!doc.exists())return;
@@ -273,7 +277,7 @@ public class AdminActivity extends Activity {
    for(int j=i;j<Math.min(i+2,labels.length);j++){
     final Runnable run=actions[j];
     TextView tile=detailText(labels[j],15,Color.WHITE,true);tile.setGravity(Gravity.CENTER);tile.setPadding(dp(9),dp(14),dp(9),dp(14));
-    tile.setMinHeight(dp(86));tile.setBackground(shape(0xff26364e,15));
+    tile.setMinHeight(dp(86));tile.setBackground(neonCustomerDetail?neonShape(0xff241836,0xffa848e6,15):shape(0xff26364e,15));
     LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(90),1);if(j%2==1)lp.leftMargin=dp(10);
     row.addView(tile,lp);tile.setOnClickListener(v->run.run());
    }
@@ -290,7 +294,7 @@ public class AdminActivity extends Activity {
    String name=doc.getString("nome");if(name==null||name.trim().isEmpty())name="Cliente";
    String email=doc.getString("email");if(email==null)email="Sem e-mail";
    screen("Gerenciar cliente");status.setVisibility(View.GONE);
-   detailInfo(name,email,uid,blocked,expiry,vip);
+   Long avatar=doc.getLong("avatarIndex");detailInfo(name,email,uid,blocked,expiry,vip,avatar==null?0:avatar.intValue());
    detailHeading("Renovar assinatura");
    actionGrid(new String[]{"30 dias","60 dias","90 dias","180 dias","1 ano"},
     new Runnable[]{()->renewCustomer(uid,30),()->renewCustomer(uid,60),()->renewCustomer(uid,90),()->renewCustomer(uid,180),()->renewCustomer(uid,365)});

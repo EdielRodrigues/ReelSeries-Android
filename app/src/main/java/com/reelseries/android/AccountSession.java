@@ -35,7 +35,7 @@ public final class AccountSession {
    Map<String,Object> initial=new HashMap<>();initial.put("uid",uid);initial.put("email",user.getEmail()==null?"":user.getEmail());initial.put("ultimoAcesso",com.google.firebase.firestore.FieldValue.serverTimestamp());
    ref.set(initial,SetOptions.merge()).addOnSuccessListener(v->claim(ref,uid,id,ctx,cb))
     .addOnFailureListener(e->cb.done(false,"Não foi possível criar perfil: "+e.getMessage()));
-  }).addOnFailureListener(e->cb.done(false,"Não foi possível verificar o acesso: "+e.getMessage()));
+  }).addOnFailureListener(e->cb.done(false,"Falha de conexão ao verificar o acesso: "+e.getMessage()));
  }
  private static void claim(DocumentReference ref,String uid,String id,Context ctx,Callback cb){
   FirebaseFirestore.getInstance().runTransaction(tx->{

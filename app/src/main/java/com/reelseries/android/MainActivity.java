@@ -606,6 +606,7 @@ public class MainActivity extends Activity {
   sessionChecking=true;
   AccountSession.ensure(this,false,(allowed,reason)->{
    sessionChecking=false;if(isFinishing())return;
+   if(!allowed && reason!=null && (reason.startsWith("Falha de conexão") || reason.contains("Failed to get document from server") || reason.contains("UNAVAILABLE") || reason.contains("DEADLINE_EXCEEDED"))){sessionReady=false;new AlertDialog.Builder(this).setTitle("Sem conexão com o Firebase").setMessage("Não foi possível confirmar o acesso agora. Verifique a internet e tente novamente. Sua conta não foi desconectada.\n\n"+reason).setCancelable(false).setPositiveButton("Tentar novamente",(d,w)->verifyDeviceSession()).show();return;}
    if(!allowed){sessionReady=false;new AlertDialog.Builder(this).setTitle("Acesso não autorizado")
     .setMessage(reason).setCancelable(false).setPositiveButton("Voltar ao login",(d,w)->{
      com.google.firebase.auth.FirebaseAuth.getInstance().signOut();
